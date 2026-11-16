@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mis materias</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap">
+<link rel="stylesheet" href="./styles/main.css">
+</head>
+<body>
+<main>
+  <div class="top"><h1>Mis materias</h1><div class="tools"><button class="icon" data-act="reorderAll" aria-label="Reordenar materias" title="Reordenar materias"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/></svg></button><button class="icon" data-act="export" aria-label="Exportar datos" title="Exportar datos"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg></button><button class="icon" data-act="import" aria-label="Importar datos" title="Importar datos"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg></button></div></div>
+  <p class="sync" id="sync" hidden></p>
+  <div id="app"></div>
+  <input type="file" id="schfile" accept="image/*" hidden>
+  <div class="dlg" id="cal" hidden><div class="dbox cal" role="dialog" aria-modal="true" aria-label="Elegir fecha de la falta"><div class="calhead"><button class="icon" id="cprev" aria-label="Mes anterior">‹</button><h2 id="ctitle"></h2><button class="icon" id="cnext" aria-label="Mes siguiente">›</button></div><div class="cgrid" id="cgrid"></div><p id="cmsg"></p><div class="dact"><button id="cx">Cerrar</button></div></div></div>
+  <div class="dlg" id="dlg" hidden><div class="dbox" role="dialog" aria-modal="true" aria-labelledby="dt"><h2 id="dt"></h2><p class="dp" id="dp"></p><textarea id="dta" spellcheck="false"></textarea><div id="dtab" class="dtab" hidden></div><div class="dact"><button class="p" id="dgo"></button><button class="icon" id="dqrexport" hidden aria-label="Exportar por QR" title="Exportar por QR"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h1"/></svg></button><button class="icon" id="dqrimport" hidden aria-label="Importar con cámara" title="Importar con cámara"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3"/></svg></button><button id="dx">Cerrar</button></div><p id="dmsg"></p></div></div>
+  <div class="dlg" id="qrScanDlg" hidden><div class="dbox qrscan-box" role="dialog" aria-modal="true" aria-label="Escanear código QR"><h2>Escanear QR</h2><p class="dp">Apunta la cámara al código QR de Cuentas Claras. Si la copia tiene varios códigos, escanéalos en cualquier orden.</p><div class="qrscan-video"><video id="qrVideo" autoplay playsinline muted></video><div class="qrscan-frame"></div></div><p class="m" id="qrScanMsg"></p><div class="dact"><button type="button" class="ghost" id="qrScanUpload">Subir captura</button><button id="qrScanCancel">Cancelar</button></div><input type="file" id="qrScanFile" accept="image/*" hidden></div></div>
+  <div class="dlg" id="onboardDlg" hidden>
+    <div class="dbox onboard-box" role="dialog" aria-modal="true" aria-labelledby="obTitle">
+      <div id="obSetup">
+        <div class="ob-head">
+          <h2 id="obTitle">¡Bienvenido a Cuentas Claras!</h2>
+          <p class="dp">Sube la foto de tu horario y conecta una API de IA para entrar a la página con todas tus materias ya creadas.</p>
+        </div>
+        <div class="onboard-grid">
+          <div class="onboard-col">
+            <h3>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              Subir foto de horario
+            </h3>
+            <p class="m">Selecciona una imagen clara de tu horario con las materias y sus horas.</p>
+            <div class="onboard-dropzone" id="obDropzone" tabindex="0" role="button" aria-label="Subir foto del horario">
+              <input type="file" id="obFile" accept="image/*" hidden>
+              <div id="obDropEmpty" class="ob-drop-content">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span class="ob-drop-title">Arrastra tu foto aquí o haz clic para buscarla</span>
+                <span class="ob-drop-sub">PNG, JPG, JPEG o WebP</span>
+              </div>
+              <div id="obDropFilled" class="ob-drop-preview" hidden>
+                <img id="obThumb" class="onboard-thumb" alt="Vista previa del horario">
+                <span id="obFileName" class="ob-file-name"></span>
+                <button type="button" class="ghost ob-change-btn" id="obChangePhoto">Cambiar foto</button>
+              </div>
+            </div>
+          </div>
+          <div class="onboard-col">
+            <h3>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/><path d="M12 6v6l4 2"/></svg>
+              Conectar API de IA
+            </h3>
+            <p class="m">La IA leerá la imagen y extraerá tus materias automáticamente.</p>
+            <div class="dsform ob-dsform">
+              <label>Proveedor
+                <select id="obAiProvider">
+                  <option value="deepseek">DeepSeek</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="openrouter">OpenRouter</option>
+                  <option value="anthropic">Anthropic (Claude)</option>
+                  <option value="google">Google Gemini</option>
+                  <option value="custom">Otra API compatible con OpenAI</option>
+                </select>
+              </label>
+              <label>Clave de API
+                <input type="password" id="obAiKey" autocomplete="new-password" spellcheck="false" placeholder="sk-...">
+              </label>
+              <label>Modelo
+                <input id="obAiModel" spellcheck="false" autocapitalize="off" placeholder="Modelo con visión" value="deepseek-flash">
+              </label>
+              <label>URL base
+                <input id="obAiBase" spellcheck="false" autocapitalize="off" placeholder="https://…/v1" value="https://api.deepseek.com">
+              </label>
+              <label class="dscheck">
+                <input type="checkbox" id="obAiRemember" checked> Guardar la conexión en este navegador
+              </label>
+              <div class="dslinks">
+                <span class="m">Consigue la clave en el panel de tu proveedor.</span>
+                <button type="button" class="ghost" id="obAiTest">Probar conexión</button>
+              </div>
+              <p class="m" id="obAiMsg"></p>
+            </div>
+          </div>
+        </div>
+        <p class="m" id="obStatusMsg"></p>
+        <div class="onboard-actions">
+          <button type="button" class="ghost" id="obSkip">Agregar horario a mano</button>
+          <div class="onboard-actions-right">
+            <button type="button" class="p" id="obSubmit">Leer horario y crear materias</button>
+          </div>
+        </div>
+      </div>
+      <div id="obReview" hidden>
+        <div class="ob-head">
+          <h2>Materias detectadas</h2>
+          <p class="dp" id="obReviewCount">Revisa las materias y los horarios detectados antes de entrar a la página.</p>
+        </div>
+        <div id="obReviewTable"></div>
+        <div id="obReviewList" class="onboard-subs-list"></div>
+        <p class="m" id="obReviewMsg"></p>
+        <div class="onboard-actions">
+          <button type="button" class="ghost" id="obBack">Elegir otra foto</button>
+          <div class="onboard-actions-right">
+            <button type="button" class="p" id="obConfirm">Confirmar y entrar a la página</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+<script defer src="./assets/qrcode.js"></script>
+<script defer src="./assets/lz-string.min.js"></script>
+<script defer src="./assets/jsQR.js"></script>
+<script defer src="./assets/app.bundle.js"></script>
+</body>
+</html>

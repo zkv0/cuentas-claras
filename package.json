@@ -1,0 +1,8 @@
+{
+  "name": "cuentas-claras",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Calculadora de notas, horarios y asistencia sin dependencias de compilación",
+  "scripts": { "build": "node tools/build.mjs", "test": "node --test", "start": "python -m http.server 8000" }
+}
