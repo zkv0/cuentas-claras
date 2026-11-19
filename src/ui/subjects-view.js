@@ -1,15 +1,15 @@
+import { weightedAverage } from '../domain/averages.js';
 import { num, f, esc } from '../core/utils.js';
 import { calc, chip, isGraded } from '../domain/grades.js';
 
 /** Construye las tarjetas y actualiza los cálculos sin interrumpir la escritura. */
-export function createSubjectsView({ state, ui, open, open2, find, allowed, faltHtml }) {
+export function createSubjectsView({ state, ui, open, open2, find, allowed, faltHtml, renderAttendance }) {
   function bodyHtml(sub){
-    var h='<div class="body"><div class="head"><input class="name" data-k="name" placeholder="Nombre de la materia" value="'+esc(sub.name)+'"></div>'+
-      '<div class="cfg"><label>Nota mínima para ganar <input data-k="min" inputmode="decimal" value="'+esc(sub.min)+'"></label>'+
-      '<label>Nota máxima <input data-k="max" inputmode="decimal" value="'+esc(sub.max)+'"></label></div>';
+    var h='<div class="body">'+
+      '<label class="subject-credits">Créditos<input data-k="credits" inputmode="decimal" placeholder="Ej. 3" value="'+esc(sub.credits??'')+'"></label>';
     function rowHtml(r,i,cp){
       return '<div class="row'+(cp?" compact":"")+'" data-i="'+i+'"><div><label>Porcentaje (%)</label><input data-k="p" inputmode="decimal" placeholder="'+(cp?"Porcentaje %":"20")+'" value="'+esc(r.p)+'"></div>'+
-        '<div><label>Nota obtenida</label><input data-k="g" inputmode="decimal" placeholder="'+(cp?"Nota":"Pendiente")+'" value="'+esc(r.g)+'"></div>'+
+        '<div><label>'+esc(r.label||"Nota obtenida")+'</label><input data-k="g" inputmode="decimal" placeholder="'+(cp?"Nota":"Pendiente")+'" value="'+esc(r.g)+'"></div>'+
         '<div class="needwrap"><label>Debes sacar</label><input class="pred" data-k="pred" inputmode="decimal" value="'+esc(r.pred)+'"></div>'+
         '<button class="ghost x" data-act="delRow" aria-label="Quitar evaluación">Quitar</button></div>';
     }
@@ -25,9 +25,10 @@ export function createSubjectsView({ state, ui, open, open2, find, allowed, falt
   }
   function cardHtml(sub){
     var o=!!open[sub.id],ro=ui.reorderAll||ui.reorderId===sub.id;
+    var name='<input class="n name subject-name" data-k="name" aria-label="Nombre de la materia" placeholder="Nombre de la materia" value="'+esc(sub.name)+'">';
     return '<section class="card'+(o&&!ro?" open":"")+(ro?" reorder":"")+'" data-id="'+sub.id+'">'+
-        (ro?'<div class="item ro"><span class="t"><span class="n"></span><span class="m"></span></span><span class="chip"></span><span class="mv"><button class="ghost" data-act="move" data-dir="-1" aria-label="Subir">↑</button><button class="ghost" data-act="move" data-dir="1" aria-label="Bajar">↓</button><button class="p" data-act="doneReorder">Listo</button></span></div>'
-          :'<div class="item" data-toggle aria-expanded="'+o+'"><span class="t"><span class="n"></span><span class="m"></span></span><span class="fbox"></span><span class="chip"></span><span class="chev">›</span></div>'+(o?bodyHtml(sub):""))+
+        (ro?'<div class="item ro"><span class="t">'+name+'<span class="m"></span></span><span class="chip"></span><span class="mv"><button class="ghost" data-act="move" data-dir="-1" aria-label="Subir">↑</button><button class="ghost" data-act="move" data-dir="1" aria-label="Bajar">↓</button><button class="p" data-act="doneReorder">Listo</button></span></div>'
+          :'<div class="item" data-toggle aria-expanded="'+o+'"><span class="t">'+name+'<span class="m"></span></span><span class="fbox"></span><span class="chip"></span><span class="chev">›</span></div>'+(o?bodyHtml(sub):""))+
         '</section>';
   }
   function renderRaw(){
@@ -44,17 +45,28 @@ export function createSubjectsView({ state, ui, open, open2, find, allowed, falt
     }
     app.innerHTML=h;
     app.querySelectorAll(".card").forEach(refreshCard);
+    renderAttendance();
+    refreshAverages();
+  }
+  function refreshAverages(){
+    const current=weightedAverage(state.subjects);
+    const all=weightedAverage(state.semesters.flatMap(x=>x.id===state.activeSemesterId?state.subjects:x.subjects));
+    const format=result=>result.value===null?'—':f(result.value);
+    const summary=document.getElementById('averageSummary');
+    if(summary)summary.innerHTML='<span>Promedio del semestre <strong>'+format(current)+'</strong></span><span title="Promedio ponderado por créditos de todos los semestres registrados">Promedio acumulado de la carrera <strong>'+format(all)+'</strong></span>';
   }
   function refreshCard(card){
     if(!card||!card.isConnected)return;
+    refreshAverages();
     var sub=find(card.dataset.id);if(!sub)return;
     var c=calc(sub),ch=chip(c);
-    card.querySelector(".n").textContent=sub.name||"Sin nombre";
+    var nameInput=card.querySelector(".subject-name");
+    if(nameInput&&document.activeElement!==nameInput)nameInput.value=sub.name;
     var fc=state.absences.filter(function(a){return a.ids.indexOf(sub.id)>=0}).length,mx=allowed(sub),mEl=card.querySelector(".m");
-    mEl.textContent="Acumulado "+f(c.earned)+" · "+f(c.graded)+"% evaluado";
-    mEl.classList.toggle("warn",mx!==null&&fc>mx);
+    mEl.textContent=(sub.cancelled?"Cancelada":ch.t)+" · "+f(c.graded)+"% evaluado";
+    mEl.classList.toggle("warn",ch.cls==="bad");
     var fb=card.querySelector(".fbox");if(fb){fb.textContent=fc+(mx!==null?"/"+mx:"")+(fc===1&&mx===null?" falta":" faltas");fb.classList.toggle("warn",mx!==null&&fc>mx)}
-    var cp=card.querySelector(".chip");cp.className="chip "+ch.cls;cp.textContent=ch.t;
+    var cp=card.querySelector(".chip");cp.className="chip"+(c.earned>=c.min?" ok":"");cp.textContent=f(c.earned);
     var gm=card.querySelector(".gm");
     if(gm){var gc=sub.rows.filter(isGraded).length;gm.textContent=gc+(gc===1?" evaluación":" evaluaciones")+" · "+f(c.graded)+"% · acumulado "+f(c.earned)}
     var need=c.need,bad=need!==null&&need>c.max;

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <title>Nota Clara</title>
+  <defs>
+    <mask id="check">
+      <rect width="64" height="64" fill="white"/>
+      <path d="m19 32 10 10 18-20" stroke="black" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    </mask>
+  </defs>
+  <path fill="#88e0b5" mask="url(#check)" d="M5 14a7 7 0 0 1 7-7c8 0 14 3 18 7v39c-5-4-11-6-19-6a6 6 0 0 1-6-6V14Zm54 0a7 7 0 0 0-7-7c-8 0-14 3-18 7v39c5-4 11-6 19-6a6 6 0 0 0 6-6V14Z"/>
+</svg>

@@ -1,3 +1,4 @@
+import { initializeSemesters, commitSemester } from '../core/store.js';
 import { KEY } from '../core/constants.js';
 
 /** Sincronización opcional: prevalece la copia con updatedAt más reciente.
@@ -15,7 +16,7 @@ export function createSync({ state, ui, render }) {
   }
   function pushNow() {
     if (!sync.ref) return;
-    sync.ref.set({ json: JSON.stringify({ subjects: state.subjects, absences: state.absences, sem: state.sem }), updatedAt: state.updatedAt }).then(
+    sync.ref.set({ json: JSON.stringify({ subjects: state.subjects, absences: state.absences, sem: state.sem, gradeScale: state.gradeScale, absencePct: state.absencePct, semesters: state.semesters, activeSemesterId: state.activeSemesterId }), updatedAt: state.updatedAt }).then(
       function () { setSync('Sincronizado con tu cuenta', 'ok'); },
       function () { setSync('No se pudo sincronizar. Guardado solo en este dispositivo.', 'warn'); }
     );
@@ -44,6 +45,7 @@ export function createSync({ state, ui, render }) {
           localOnly();
           ui.anim.flip = true;
           render();
+          var selector=$('semesterSelect');if(selector){selector.innerHTML='';state.semesters.forEach(function(x){var option=document.createElement('option');option.value=x.id;option.textContent=x.name;option.selected=x.id===state.activeSemesterId;selector.appendChild(option)})}
           pushNow();
           return;
         }
@@ -53,10 +55,14 @@ export function createSync({ state, ui, render }) {
           state.subjects = r.subjects;
           state.absences = Array.isArray(r.absences) ? r.absences : [];
           if (r.sem) state.sem = r.sem;
+          state.absencePct=r.absencePct??r.sem?.pct??'';
+          if (r.gradeScale) state.gradeScale = r.gradeScale;
+          if(r.semesters){state.semesters=r.semesters;state.activeSemesterId=r.activeSemesterId;initializeSemesters()}else{commitSemester()}
           state.updatedAt = rt;
           localOnly();
           ui.anim.flip = true;
           render();
+          var selector=$('semesterSelect');if(selector){selector.innerHTML='';state.semesters.forEach(function(x){var option=document.createElement('option');option.value=x.id;option.textContent=x.name;option.selected=x.id===state.activeSemesterId;selector.appendChild(option)})}
         } else if (rt < lt) {
           pushNow();
           return;

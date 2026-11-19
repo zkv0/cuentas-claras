@@ -24,6 +24,8 @@ La conexión de IA se guarda aparte, en `calc-notas-ai`, para que la exportació
 
 `removeSubject(id)` en `src/core/store.js` concentra la eliminación: quita la materia de `subjects`, retira su identificador de todas las ausencias y descarta las ausencias que quedan sin materias. Lo usan tanto el botón «Eliminar materia» de la tarjeta como la lista de horarios. Después se guarda y se vuelve a dibujar la interfaz; no quedan referencias huérfanas en las faltas ni en la sincronización.
 
+El botón de papelera (`wipeAll`) vacía `subjects` y `absences`, restablece `sem`, llama a `clearAIConfig`, elimina `ONBOARD_KEY`, limpia el estado temporal de la interfaz y guarda la copia vacía. La acción se confirma en un diálogo y no tiene recuperación automática; por eso conviene exportar antes.
+
 Las ausencias mantienen `id`, `date` e `ids`, donde `ids` referencia las materias afectadas. Al importar, se crean nuevos identificadores y se adaptan esas referencias. La importación agrega materias; no reemplaza las existentes. Las fechas de ausencia se conservan como `AAAA-MM-DD` y se interpretan en hora local.
 
 ## Transferencia por QR

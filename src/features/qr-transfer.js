@@ -74,6 +74,10 @@ export function createQrTransfer({ state, ui, restoreSnapshot }) {
       subjects: state.subjects,
       absences: state.absences,
       sem: state.sem,
+      gradeScale: state.gradeScale,
+      absencePct: state.absencePct,
+      semesters: state.semesters,
+      activeSemesterId: state.activeSemesterId,
       ai: isAIConfigured(ai) ? ai : null,
     };
   }
@@ -360,6 +364,14 @@ export function createQrTransfer({ state, ui, restoreSnapshot }) {
     restoreSnapshot(data);
   }
 
+  function reset() {
+    pendingSnapshot = null;
+    scanSession = null;
+    exportParts = [];
+    exportIndex = 0;
+    stopScanner(true);
+  }
+
   function handleQrClick(event) {
     var target = event.target;
     if (!target || !target.closest) return;
@@ -397,5 +409,5 @@ export function createQrTransfer({ state, ui, restoreSnapshot }) {
     if (event.key === 'Escape' && !$('qrScanDlg').hidden) stopScanner(true);
   });
 
-  return { openExportQr, openImportQr, applyImportReview };
+  return { openExportQr, openImportQr, applyImportReview, reset };
 }

@@ -1,3 +1,4 @@
+import { createScheduleReview } from '../ui/schedule-review.js';
 import { uid, esc, tm } from '../core/utils.js';
 import { DIAS, ONBOARD_KEY } from '../core/constants.js';
 import { providerDefaults, loadAIConfig, saveAIConfig, testAIConnection, isAIConfigured, buildSchedulePrompt, readScheduleImage } from '../services/ai.js';
@@ -9,6 +10,7 @@ export function createOnboarding({ state, ui, save, render, schedTable, openAddS
   const $ = id => document.getElementById(id);
   let selectedFile = null;
   let pendingSubjects = null;
+  let reviewEditor = null;
 
   function parseSubjects(res) {
     const items = [];
@@ -23,7 +25,6 @@ export function createOnboarding({ state, ui, save, render, schedTable, openAddS
       const days = bl.map(function (b) { return b.d; })
         .concat(Array.isArray(m.dias) ? m.dias.map(Number) : [])
         .filter(function (d, i, a) { return d >= 0 && d <= 6 && a.indexOf(d) === i; });
-      if (!days.length) return;
       const seen = {};
       const uniqueBl = bl.filter(function (b) {
         const k = b.d + '_' + b.s + '_' + b.e;
@@ -294,20 +295,10 @@ export function createOnboarding({ state, ui, save, render, schedTable, openAddS
           }));
         }
 
-        const listEl = $('obReviewList');
-        if (listEl) {
-          let listHtml = '';
-          items.forEach(function (it) {
-            const daysTxt = it.days.map(function (d) { return DIAS[d]; }).join(', ');
-            const timesTxt = (it.blocks || []).map(function (b) {
-              return (b.s && b.e) ? b.s + ' – ' + b.e : '';
-            }).filter(Boolean).join(', ');
-            listHtml += '<div class="onboard-sub-item"><span class="onboard-sub-name">' +
-              esc(it.name) + '</span><span class="onboard-sub-sched">' +
-              esc(daysTxt + (timesTxt ? ' · ' + timesTxt : '')) + '</span></div>';
-          });
-          listEl.innerHTML = listHtml;
-        }
+        reviewEditor = createScheduleReview($('obReviewList'), items, function () {
+          $('obReviewMsg').textContent = '';
+          if (schedTable) $('obReviewTable').innerHTML = schedTable(items);
+        });
       } catch (err) {
         submitBtn.disabled = false;
         setStatusMsg((err && err.message) || 'Ocurrió un error al leer el horario.', 'warn');
@@ -318,6 +309,9 @@ export function createOnboarding({ state, ui, save, render, schedTable, openAddS
   const confirmBtn = $('obConfirm');
   if (confirmBtn) {
     confirmBtn.addEventListener('click', function () {
+      if (!reviewEditor || !pendingSubjects) return;
+      const error=reviewEditor.validate();
+      if(error){$('obReviewMsg').textContent=error;return;}
       if (pendingSubjects && pendingSubjects.length) {
         pendingSubjects.forEach(function (it) {
           state.subjects.push({

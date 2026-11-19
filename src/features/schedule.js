@@ -1,3 +1,4 @@
+import { createScheduleReview } from '../ui/schedule-review.js';
 import { uid, esc, tm, toMin, fm } from '../core/utils.js';
 import { DIAS } from '../core/constants.js';
 import { AI_PROVIDERS, providerDefaults, loadAIConfig, saveAIConfig, clearAIConfig, isAIConfigured, readScheduleImage, testAIConnection, buildSchedulePrompt } from '../services/ai.js';
@@ -8,7 +9,7 @@ import { AI_PROVIDERS, providerDefaults, loadAIConfig, saveAIConfig, clearAIConf
  */
 export function createSchedule({ state, ui, save, render, find, limitLine, closeDlg, removeSubject }) {
   const $ = id => document.getElementById(id);
-  let pendingSched = null;
+  let pendingSched = null, scheduleReview = null;
   var ORDD=[1,2,3,4,5,6,0],editDraft=null,editSubId=null,addDraft=null,addReturnToList=false,aiPendingUpload=false;
   function hideQrActions(){var a=$("dqrexport"),b=$("dqrimport");if(a)a.hidden=true;if(b)b.hidden=true}
   function horSummary(x){
@@ -336,10 +337,10 @@ export function createSchedule({ state, ui, save, render, find, limitLine, close
     var blks="";
     placed.forEach(function(p){
       var c=ORD.indexOf(p.d),top=(p.s-h0*60)/60*H+1,hg=Math.max(24,(p.e-p.s)/60*H-2);
-      blks+='<div class="blk'+(p.isNew?" nw":"")+'" style="left:calc(100% / 7 * '+c+' + 2px);width:calc(100% / 7 - 4px);top:'+top+'px;height:'+hg+'px"><b>'+esc(p.name||"Sin nombre")+'</b><span>'+fm(p.s)+'–'+fm(p.e)+'</span></div>';
+      blks+='<div class="blk'+(p.isNew?" nw":"")+'" style="left:calc(100% / 7 * '+c+' + 2px);width:calc(100% / 7 - 4px);top:'+(top/(n*H)*100)+'%;height:'+(hg/(n*H)*100)+'%"><b>'+esc(p.name||"Sin nombre")+'</b><span>'+fm(p.s)+'–'+fm(p.e)+'</span></div>';
     });
     var head='<div class="sg-h"><span></span>'+ORD.map(function(d){return '<span>'+DIAS[d]+'</span>'}).join("")+'</div>';
-    var out='<div class="sg"><div class="sg-scroll">'+head+'<div class="sg-b"><div class="sg-hours">'+hours+'</div><div class="sg-body" style="height:'+(n*H)+'px">'+blks+'</div></div></div></div>';
+    var out='<div class="sg" style="--schedule-hours:'+Math.max(1,n)+';--schedule-natural-height:'+(n*H)+'px"><div class="sg-scroll">'+head+'<div class="sg-b"><div class="sg-hours">'+hours+'</div><div class="sg-body" style="height:'+(n*H)+'px">'+blks+'</div></div></div></div>';
     if(loose.length)out+='<p class="sg-loose">Sin hora: '+loose.map(function(l){return esc(l.name||"Sin nombre")+" ("+DIAS[l.d]+")"}).join(", ")+'</p>';
     return out;
   }
@@ -355,7 +356,6 @@ export function createSchedule({ state, ui, save, render, find, limitLine, close
       if(!m||!m.nombre)return;
       var bl=[];(Array.isArray(m.bloques)?m.bloques:[]).forEach(function(b){var d=Number(b&&b.dia);if(b&&d>=0&&d<=6)bl.push({d:d,s:tm(b.inicio),e:tm(b.fin)})});
       var days=bl.map(function(b){return b.d}).concat(Array.isArray(m.dias)?m.dias.map(Number):[]).filter(function(d,i,a){return d>=0&&d<=6&&a.indexOf(d)===i});
-      if(!days.length)return;
       var seen={};bl=bl.filter(function(b){var k=b.d+b.s+b.e;if(seen[k])return false;seen[k]=1;return true});
       items.push({name:String(m.nombre).trim(),days:days,blocks:bl,match:matchSubject(m.nombre)});
     });
@@ -363,19 +363,28 @@ export function createSchedule({ state, ui, save, render, find, limitLine, close
     pendingSched=items;
     $("dmsg").textContent="";ui.dialogMode="schedule";
     $("dt").textContent="Horario leído";
-    $("dp").textContent="Revisa lo que leí. Al aplicar se guardan los días y horas de cada materia; las marcadas como nueva se crearán.";
+    $("dp").textContent="";
     $("dta").hidden=true;
     $("dtab").hidden=false;
-    $("dtab").innerHTML=schedTable(items.map(function(i){return{name:i.match?i.match.name:i.name,isNew:!i.match,days:i.days,blocks:i.blocks}}));
+    $("dtab").innerHTML='<div id="scheduleReviewEditor"></div><div id="scheduleReviewPreview"></div>';
+    function updatePreview(){
+      $('dmsg').textContent='';
+      $('scheduleReviewPreview').innerHTML=schedTable(items.map(function(i){return{name:i.match?i.match.name:i.name,isNew:!i.match,days:i.days,blocks:i.blocks}}));
+    }
+    scheduleReview=createScheduleReview($('scheduleReviewEditor'),items,updatePreview);
+    updatePreview();
     $("dgo").textContent="Aplicar";$("dlg").hidden=false;
     setSch("Horario leído. Revisa y aplica.");
   }
   function applySched(){
+    if(!pendingSched||!scheduleReview)return;
+    const error=scheduleReview.validate();
+    if(error){$('dmsg').textContent=error;return;}
     (pendingSched||[]).forEach(function(i){
       if(i.match){i.match.days=i.days;i.match.blocks=i.blocks}
       else state.subjects.push({id:uid(),name:i.name,min:3,max:5,days:i.days,blocks:i.blocks,rows:[{p:"",g:"",pred:""},{p:"",g:"",pred:""},{p:"",g:"",pred:""}]});
     });
-    pendingSched=null;save();ui.anim.flip=true;render();closeDlg();setSch("Horario guardado.");
+    pendingSched=null;scheduleReview=null;save();ui.anim.flip=true;render();closeDlg();setSch("Horario guardado.");
   }
   $("schfile").addEventListener("change",function(){var f=this.files&&this.files[0];this.value="";if(f)readSchedule(f)});
 

@@ -1,4 +1,4 @@
-# Cuentas Claras
+# Nota Clara
 
 Aplicación web para guardar materias, registrar notas con sus porcentajes, calcular la nota necesaria para aprobar y gestionar horarios y faltas. Conserva el diseño oscuro y el formato de datos de la versión original.
 
@@ -21,6 +21,8 @@ No necesitas instalar paquetes ni compilar para usar el proyecto. Se requiere un
 Agrega tu horario con una foto o a mano; las materias se crean a partir de ese horario, no como fichas vacías. Después ajusta la nota mínima y la nota máxima e introduce los porcentajes y las notas disponibles. Deja vacía una nota que todavía no hayas recibido. Los campos «Debes sacar» se actualizan con el resultado; escribir en ellos fija una predicción que interviene en los demás pendientes.
 
 Al eliminar una materia, ya sea desde su tarjeta o desde la lista de horarios, desaparece también del horario y de todas las faltas registradas; las faltas que se quedan sin materias se borran.
+
+El botón de papelera de la barra superior elimina **todos los datos**: materias, faltas, semestre, conexión de IA y la marca de bienvenida. Pide confirmación y no se puede deshacer; exporta o transfiere por QR antes de usarlo.
 
 Para mover todo a otro dispositivo sin backend, abre **Exportar datos** y pulsa el botón con el icono de QR. En el otro dispositivo abre **Importar datos** y pulsa el botón de la cámara. El QR incluye materias, faltas, semestre y la configuración de IA (también la clave, si la tienes configurada); trátalo como información privada. La importación por QR **reemplaza** los datos actuales, a diferencia de pegar el texto de exportación, que agrega materias.
 
