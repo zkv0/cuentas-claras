@@ -10,7 +10,7 @@ const listeners = new Map();
 const memory = new Map();
 function element(id) {
   if (!elements.has(id)) elements.set(id, {
-    hidden: false, innerHTML: '', value: '', textContent: '', dataset: {},
+    hidden: id === 'onboardDlg', innerHTML: '', value: '', textContent: '', dataset: {},
     classList: { toggle() {}, add() {}, remove() {} },
     handlers: {},
     addEventListener(event, handler) { this.handlers[event] = handler; },
@@ -57,7 +57,10 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
   vm.runInThisContext(readFileSync(new URL('../assets/app.bundle.js', import.meta.url), 'utf8'));
   assert.match(element('app').innerHTML, /Aún no tienes materias/);
   assert.match(element('app').innerHTML, /Agregar horario a mano/);
-  // La bienvenida ofrece crear las materias desde un horario, no una materia vacía.
+  assert.match(html, /id="onboardDlg" hidden/);
+  assert.equal(element('onboardDlg').hidden, true);
+  clickAction('openOnboard');
+  assert.equal(element('onboardDlg').hidden, false);
   element('obSkip').handlers.click();
   assert.equal(element('onboardDlg').hidden, true);
   assert.equal(element('dlg').hidden, false);
@@ -101,6 +104,18 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
   assert.doesNotMatch(element('app').innerHTML, /data-id="faltas"|data-sem=/);
   element('attendanceDlg').hidden = true;
   element('cal').hidden = true;
+  // Pulsar el espacio de la tarjeta abre el historial, sin registrar una falta.
+  const shortcut = { closest: selector => selector === '.attendance-shortcut' ? shortcut : null };
+  for (const handler of listeners.get('click') ?? []) handler({ target: shortcut });
+  assert.equal(element('attendanceDlg').hidden, false);
+  assert.equal(element('cal').hidden, true);
+  element('attendanceClose').handlers.click();
+  // El botón + conserva prioridad aunque esté dentro de la tarjeta.
+  const addButton = { closest: selector => selector === '[data-act="addFalta"]' ? addButton : selector === '.attendance-shortcut' ? shortcut : null };
+  for (const handler of listeners.get('click') ?? []) handler({ target: addButton });
+  assert.equal(element('cal').hidden, false);
+  assert.equal(element('attendanceDlg').hidden, true);
+  element('cx').handlers.click();
   clickAction('openAttendance');
   assert.equal(element('attendanceDlg').hidden, false);
   assert.equal(element('app').inert, true);
@@ -224,6 +239,105 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
   element('semesterName').value='2027-2';
   element('dgo').handlers.click();
   assert.match(element('semesterSelect').innerHTML,/2027-2/);
+  const fixture = {
+    gradeScale: { min: 3, max: 5 }, absencePct: 20, activeSemesterId: 'second', subjects: [],
+    semesters: [
+      { id: 'first', name: '2027-1', subjects: [{ id: 'physics', name: 'Física', credits: '3', days: [1],
+        blocks: [{ d: 1, s: '08:00', e: '10:00' }], rows: [{ label: 'Parcial', p: '40', g: '4.2' }] }],
+        absences: [{ date: '2027-02-01', ids: ['physics'] }] },
+      { id: 'second', name: '2027-2', subjects: [], absences: [], sem: { start: '2027-07-01', end: '2027-11-30' } },
+    ],
+  };
+  function importText(value) {
+    clickAction('import');
+    element('dta').value = value;
+    element('dgo').handlers.click();
+  }
+  function assertRestored() {
+    const data = JSON.parse(memory.get('calc-notas-v2'));
+    assert.deepEqual(data.semesters.map(period => period.name), ['2027-1', '2027-2']);
+    assert.equal(data.activeSemesterId, data.semesters[1].id);
+    assert.equal(data.sem.start, '2027-07-01');
+    assert.equal(data.absencePct, 20);
+    const first = data.semesters[0], subject = first.subjects[0];
+    assert.equal(subject.name, 'Física');
+    assert.equal(subject.credits, '3');
+    assert.deepEqual(subject.blocks, fixture.semesters[0].subjects[0].blocks);
+    assert.deepEqual(subject.rows[0], { label: 'Parcial', p: '40', g: '4.2', pred: '' });
+    assert.equal(first.absences[0].date, '2027-02-01');
+    assert.deepEqual(first.absences[0].ids, [subject.id]);
+  }
+  importText(JSON.stringify(fixture));
+  clickAction('export');
+  const backup = element('dta').value;
+  assert.equal(Object.hasOwn(JSON.parse(backup), 'ai'), false);
+  importText('[{"name":"Materia temporal","rows":[]}]');
+  assert.equal(JSON.parse(memory.get('calc-notas-v2')).subjects[0].name, 'Materia temporal');
+  const beforeInvalid = memory.get('calc-notas-v2');
+  importText('{');
+  assert.match(element('dmsg').textContent, /No pude leer/);
+  assert.equal(memory.get('calc-notas-v2'), beforeInvalid);
+  importText(backup);
+  assertRestored();
+
+  // Genera un QR real, convierte sus módulos a píxeles y restaura con el lector de imágenes.
+  vm.runInThisContext(readFileSync(new URL('../assets/jsQR.js', import.meta.url), 'utf8'));
+  const originalQr = globalThis.qrcode;
+  let pixels;
+  const qrImages = [];
+  globalThis.qrcode = (...args) => {
+    const qr = originalQr(...args);
+    const make = qr.make;
+    qr.make = () => {
+      make();
+      const size = (qr.getModuleCount() + 8) * 4;
+      const data = new Uint8ClampedArray(size * size * 4).fill(255);
+      for (let y = 16; y < size - 16; y++) {
+        for (let x = 16; x < size - 16; x++) {
+          if (!qr.isDark((y - 16) >> 2, (x - 16) >> 2)) continue;
+          const offset = (y * size + x) * 4;
+          data.fill(0, offset, offset + 3);
+        }
+      }
+      pixels = { data, width: size, height: size };
+      qrImages.push(pixels);
+    };
+    return qr;
+  };
+  try {
+    clickAction('export');
+    element('dqrexport').handlers.click();
+    for (let page = 0; page < 10 && /data-qr-next>/.test(element('dtab').innerHTML); page++) {
+      const next = { closest: selector => selector === '[data-qr-next]' ? next : null };
+      for (const handler of listeners.get('click') ?? []) handler({ target: next });
+    }
+    assert.doesNotMatch(element('dtab').innerHTML, /data-qr-next>/);
+  } finally {
+    globalThis.qrcode = originalQr;
+  }
+  assert.ok(pixels);
+  element('dx').handlers.click();
+  importText('[{"name":"Materia temporal","rows":[]}]');
+  try {
+    globalThis.FileReader = class { readAsDataURL() { this.onload(); } };
+    globalThis.Image = class {
+      width = pixels.width;
+      height = pixels.height;
+      set src(value) { this.onload(); }
+    };
+    document.createElement = () => ({ getContext: () => ({ drawImage() {}, getImageData: () => pixels }) });
+    clickAction('import');
+    element('dqrimport').handlers.click();
+    for (pixels of qrImages) element('qrScanFile').handlers.change.call({ files: [{}] });
+    assert.equal(element('dt').textContent, 'Restaurar desde QR', element('qrScanMsg').textContent);
+    assert.match(element('dtab').innerHTML, /<b>1<\/b> materia y <b>1<\/b> falta/);
+    element('dgo').handlers.click();
+    assertRestored();
+  } finally {
+    delete globalThis.FileReader;
+    delete globalThis.Image;
+    delete document.createElement;
+  }
   // El borrado total limpia también la IA y la marca de bienvenida.
   clickAction('wipeAll');
   assert.equal(element('dlg').hidden, false);

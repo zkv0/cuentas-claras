@@ -1,10 +1,9 @@
 import { createScheduleReview } from '../ui/schedule-review.js';
 import { uid, esc, tm } from '../core/utils.js';
-import { DIAS, ONBOARD_KEY } from '../core/constants.js';
+import { DIAS } from '../core/constants.js';
 import { providerDefaults, loadAIConfig, saveAIConfig, testAIConnection, isAIConfigured, buildSchedulePrompt, readScheduleImage } from '../services/ai.js';
 
-/** Asistente de bienvenida en el primer ingreso: permite subir la foto del horario
- * y configurar una API de IA para entrar a la página con todas las materias ya creadas.
+/** Importa materias desde una foto del horario y permite configurar la API de IA.
  */
 export function createOnboarding({ state, ui, save, render, schedTable, openAddSched }) {
   const $ = id => document.getElementById(id);
@@ -156,19 +155,6 @@ export function createOnboarding({ state, ui, save, render, schedTable, openAddS
   function closeOnboarding() {
     const dlg = $('onboardDlg');
     if (dlg) dlg.hidden = true;
-    try {
-      localStorage.setItem(ONBOARD_KEY, '1');
-    } catch (e) {}
-  }
-
-  function initOnboarding() {
-    let onboarded = false;
-    try {
-      onboarded = Boolean(localStorage.getItem(ONBOARD_KEY));
-    } catch (e) {}
-    if (!onboarded && state.subjects.length === 0) {
-      openOnboarding();
-    }
   }
 
   // Cableado de eventos
@@ -368,5 +354,5 @@ export function createOnboarding({ state, ui, save, render, schedTable, openAddS
     }
   });
 
-  return { initOnboarding, openOnboarding, closeOnboarding, parseSubjects };
+  return { openOnboarding, closeOnboarding, parseSubjects };
 }

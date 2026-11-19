@@ -36,6 +36,7 @@ const allowed = sub => allowedAbsences(sub, state.sem);
   document.addEventListener("click",function(e){
     if(e.target.closest('input[data-k="name"]'))return;
     if(e.target.closest('[data-act="addFalta"]')){openCal();return}
+    if(e.target.closest('.attendance-shortcut')){openAttendance('absences');return}
     var t=e.target.closest("[data-toggle]");
     if(t&&!ui.reorderAll){
       var tid=t.closest(".card").dataset.id;
@@ -190,7 +191,7 @@ const allowed = sub => allowedAbsences(sub, state.sem);
       ta.readOnly=true;ta.value=JSON.stringify({version:2,subjects:state.subjects,absences:state.absences,sem:state.sem,gradeScale:state.gradeScale,absencePct:state.absencePct,semesters:state.semesters,activeSemesterId:state.activeSemesterId},null,2);$("dgo").textContent="Copiar";
     }else{
       $("dt").textContent="Importar datos";
-      $("dp").textContent="Pega el texto exportado. Las materias se agregarán a las que ya tienes.";
+      $("dp").textContent="Pega el texto exportado. Una copia completa reemplaza tus semestres, materias y faltas. Una lista antigua agrega materias al semestre activo.";
       ta.readOnly=false;ta.value="";ta.placeholder="Pega aquí tus datos";$("dgo").textContent="Importar";
     }
     $("dlg").hidden=false;ta.focus();if(mode==="export")ta.select();
@@ -372,8 +373,8 @@ const allowed = sub => allowedAbsences(sub, state.sem);
   const { openHorList, openSchedEdit, applyEditSched, applySched, schedTable, stateRows, requestSchedulePhoto, openAddSched, applyAddSched, openAIConfig, applyAIConfig } =
     createSchedule({ state, ui, save, render, find, limitLine, closeDlg, removeSubject });
   const { openGradeImport } = createGradeImport({ state, save, render, openAIConfig });
-  const { initOnboarding, openOnboarding } = createOnboarding({ state, ui, save, render, schedTable, openAddSched });
+  const { openOnboarding } = createOnboarding({ state, ui, save, render, schedTable, openAddSched });
   const { applyImportReview, reset: resetQr } = createQrTransfer({ state, ui, restoreSnapshot });
   const { initSync, schedulePush } = createSync({ state, ui, render });
   onSave(schedulePush);
-  refreshSemesters();ui.anim.first=true;render();initSync();initOnboarding();
+  refreshSemesters();ui.anim.first=true;render();initSync();

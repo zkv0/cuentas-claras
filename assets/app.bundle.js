@@ -1554,12 +1554,11 @@ const { createScheduleReview } = modules["src/ui/schedule-review.js"];
 
 const { uid, esc, tm } = modules["src/core/utils.js"];
 
-const { DIAS, ONBOARD_KEY } = modules["src/core/constants.js"];
+const { DIAS } = modules["src/core/constants.js"];
 
 const { providerDefaults, loadAIConfig, saveAIConfig, testAIConnection, isAIConfigured, buildSchedulePrompt, readScheduleImage } = modules["src/services/ai.js"];
 
-/** Asistente de bienvenida en el primer ingreso: permite subir la foto del horario
- * y configurar una API de IA para entrar a la página con todas las materias ya creadas.
+/** Importa materias desde una foto del horario y permite configurar la API de IA.
  */
 function createOnboarding({ state, ui, save, render, schedTable, openAddSched }) {
   const $ = id => document.getElementById(id);
@@ -1711,19 +1710,6 @@ function createOnboarding({ state, ui, save, render, schedTable, openAddSched })
   function closeOnboarding() {
     const dlg = $('onboardDlg');
     if (dlg) dlg.hidden = true;
-    try {
-      localStorage.setItem(ONBOARD_KEY, '1');
-    } catch (e) {}
-  }
-
-  function initOnboarding() {
-    let onboarded = false;
-    try {
-      onboarded = Boolean(localStorage.getItem(ONBOARD_KEY));
-    } catch (e) {}
-    if (!onboarded && state.subjects.length === 0) {
-      openOnboarding();
-    }
   }
 
   // Cableado de eventos
@@ -1923,7 +1909,7 @@ function createOnboarding({ state, ui, save, render, schedTable, openAddSched })
     }
   });
 
-  return { initOnboarding, openOnboarding, closeOnboarding, parseSubjects };
+  return { openOnboarding, closeOnboarding, parseSubjects };
 }
 
 return { createOnboarding };
@@ -2335,12 +2321,13 @@ function createQrTransfer({ state, ui, restoreSnapshot }) {
     pendingSnapshot = data;
     ui.dialogMode = 'qrreview';
     $('dt').textContent = 'Restaurar desde QR';
-    $('dp').textContent = 'Se reemplazarán tus materias, faltas y semestre actuales. Si el QR incluye IA, también se restaurará su configuración.';
+    $('dp').textContent = 'Se reemplazarán tus semestres, materias y faltas. Si el QR incluye IA, también se restaurará su configuración.';
     $('dmsg').textContent = '';
     $('dta').hidden = true;
     $('dtab').hidden = false;
-    var count = Array.isArray(data.subjects) ? data.subjects.length : 0;
-    var absences = Array.isArray(data.absences) ? data.absences.length : 0;
+    const periods = Array.isArray(data.semesters) && data.semesters.length ? data.semesters : [data];
+    const count = periods.reduce((total, period) => total + (Array.isArray(period?.subjects) ? period.subjects.length : 0), 0);
+    const absences = periods.reduce((total, period) => total + (Array.isArray(period?.absences) ? period.absences.length : 0), 0);
     var hasAi = Boolean(data.ai && isAIConfigured(data.ai));
     var provider = data.ai && data.ai.provider ? providerDefaults(data.ai.provider).label : 'sin proveedor';
     $('dtab').innerHTML = '<div class="qrreview">' +
@@ -2569,6 +2556,7 @@ const allowed = sub => allowedAbsences(sub, state.sem);
   document.addEventListener("click",function(e){
     if(e.target.closest('input[data-k="name"]'))return;
     if(e.target.closest('[data-act="addFalta"]')){openCal();return}
+    if(e.target.closest('.attendance-shortcut')){openAttendance('absences');return}
     var t=e.target.closest("[data-toggle]");
     if(t&&!ui.reorderAll){
       var tid=t.closest(".card").dataset.id;
@@ -2723,7 +2711,7 @@ const allowed = sub => allowedAbsences(sub, state.sem);
       ta.readOnly=true;ta.value=JSON.stringify({version:2,subjects:state.subjects,absences:state.absences,sem:state.sem,gradeScale:state.gradeScale,absencePct:state.absencePct,semesters:state.semesters,activeSemesterId:state.activeSemesterId},null,2);$("dgo").textContent="Copiar";
     }else{
       $("dt").textContent="Importar datos";
-      $("dp").textContent="Pega el texto exportado. Las materias se agregarán a las que ya tienes.";
+      $("dp").textContent="Pega el texto exportado. Una copia completa reemplaza tus semestres, materias y faltas. Una lista antigua agrega materias al semestre activo.";
       ta.readOnly=false;ta.value="";ta.placeholder="Pega aquí tus datos";$("dgo").textContent="Importar";
     }
     $("dlg").hidden=false;ta.focus();if(mode==="export")ta.select();
@@ -2905,11 +2893,11 @@ const allowed = sub => allowedAbsences(sub, state.sem);
   const { openHorList, openSchedEdit, applyEditSched, applySched, schedTable, stateRows, requestSchedulePhoto, openAddSched, applyAddSched, openAIConfig, applyAIConfig } =
     createSchedule({ state, ui, save, render, find, limitLine, closeDlg, removeSubject });
   const { openGradeImport } = createGradeImport({ state, save, render, openAIConfig });
-  const { initOnboarding, openOnboarding } = createOnboarding({ state, ui, save, render, schedTable, openAddSched });
+  const { openOnboarding } = createOnboarding({ state, ui, save, render, schedTable, openAddSched });
   const { applyImportReview, reset: resetQr } = createQrTransfer({ state, ui, restoreSnapshot });
   const { initSync, schedulePush } = createSync({ state, ui, render });
   onSave(schedulePush);
-  refreshSemesters();ui.anim.first=true;render();initSync();initOnboarding();
+  refreshSemesters();ui.anim.first=true;render();initSync();
 
 return {  };
 })();

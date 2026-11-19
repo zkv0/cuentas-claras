@@ -3,9 +3,10 @@
 body{font-family:Roboto,"Google Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
 main{padding-bottom:112px}
 h1{font-size:2rem;font-weight:400;letter-spacing:0;line-height:1;margin:0}
-.top{align-items:center}
+.top{align-items:center;justify-content:space-between}
 .brand{display:flex;align-items:center;gap:10px;margin-bottom:28px;color:#f2f2f2;font-size:1.5rem;font-weight:500;letter-spacing:-.04em;line-height:1.2}
 .brand img{display:block;flex-shrink:0}
+.top .brand{margin:0}
 .tools{align-items:center;min-height:40px}
 button{position:relative;overflow:hidden;border:0;border-radius:100px;background:var(--surface3);color:var(--ink);padding:10px 24px;font-weight:500;letter-spacing:.01em;transition:box-shadow .25s var(--ease),transform .15s var(--ease),background-color .25s var(--ease),color .25s}
 button::after{content:"";position:absolute;inset:0;background:currentColor;opacity:0;transition:opacity .2s;pointer-events:none}
@@ -473,6 +474,15 @@ button.p:focus-visible{background:#fff;color:var(--accent-ink)}
 .semester-form .semester-dates input,.attendance-content .semester-dates input{background:var(--surface3);border-radius:14px;padding:8px 12px}
 button.settings-option{border-radius:14px}
 .attendance-dialog:not(.absence-view) .blk{border-radius:8px}
+.item input.subject-name{width:min(70%,28ch);max-width:100%}
+.attendance-shortcut{cursor:pointer;transition:none;animation:none}
+.attendance-shortcut:hover{background:var(--att-container);box-shadow:none}
+.attendance-shortcut .attendance-main{transition:none;animation:none}
+.attendance-shortcut .attendance-main::before,.attendance-shortcut .attendance-main::after{content:none}
+.attendance-shortcut .attendance-main:hover,.attendance-shortcut .attendance-main:active{background:transparent;transform:none;box-shadow:none}
+.attendance-shortcut .attendance-add{transition:none;animation:none}
+.attendance-shortcut .attendance-add:active{transform:none}
+.attendance-shortcut:has(.attendance-main:focus-visible){outline:2px solid var(--att-primary);outline-offset:3px}
 .sg-body{background:none}
 .row.pending input.pred.locked{background:#343434;box-shadow:none}
 .row.pending input.pred.bad{background:var(--bad);color:var(--bad-ink)}
@@ -493,3 +503,36 @@ button.settings-option{border-radius:14px}
 .schedule-review-block input,.schedule-review-block select{width:100%;min-width:0;padding:10px 8px;font:inherit;font-size:.85rem;color:var(--ink);background:var(--surface);border:0;border-radius:12px;min-height:40px}
 .schedule-review-block .icon{width:32px;height:40px;background:transparent}
 @media(max-width:440px){.schedule-review-block{grid-template-columns:1fr 1fr 32px}.schedule-review-block label:first-child{grid-column:1/-1}}
+
+@media (max-width:600px){
+  main{padding:16px max(12px,env(safe-area-inset-right)) 40px max(12px,env(safe-area-inset-left))}
+  .top{align-items:center;gap:8px}
+  .top .brand{font-size:1.2rem;gap:5px;white-space:nowrap}
+  .brand img{width:30px;height:30px}
+  .top .tools{width:auto;gap:4px;margin-left:auto}
+  .top .icon,.semester-bar .semester-delete,.attendance-shortcut .attendance-add{width:44px;height:44px;min-height:44px}
+  .semester-bar{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 44px}
+  .semester-picker{grid-column:1/-1;min-width:0}
+  .semester-bar button{min-height:44px;padding-inline:6px}
+  .average-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:0 0 14px}
+  .average-summary span{padding:10px 12px;background:var(--surface2);border-radius:16px}
+  .average-summary strong{display:block;margin:3px 0 0}
+  .empty-acts{display:grid;justify-content:stretch}
+  .empty-acts button{min-height:44px}
+  .row,.row.compact,.row.compact.pending{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .row.compact .x{grid-column:1/-1;justify-self:end;min-height:44px;order:4}
+  .item input.subject-name,.body input,.dlg input:not([type=checkbox]),.dlg select,.dbox textarea{font-size:16px}
+  .dlg{padding:max(8px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left))}
+  .dlg .dbox{min-width:0;max-height:100%;overflow-y:auto;overscroll-behavior:contain;border-radius:22px}
+  .dlg .dact{flex-wrap:wrap}
+  .dlg .dact button{min-height:44px;padding-inline:12px}
+  .attendance-dialog:not(.absence-view) .sg,#obReviewTable .sg{overflow-x:auto;overscroll-behavior-x:contain}
+  .attendance-dialog:not(.absence-view) .sg-scroll,#obReviewTable .sg-scroll{min-width:620px}
+  .attendance-dialog:not(.absence-view) .sg-body{height:var(--schedule-natural-height)!important}
+  .attendance-dialog:not(.absence-view) .sg-hours .hl{height:40px;font-size:.7rem}
+  .attendance-dialog:not(.absence-view) .blk b{font-size:.72rem}
+  .attendance-dialog:not(.absence-view) .blk span{font-size:.62rem}
+}
+@media (max-width:350px){
+  .top .tools{width:100%;margin-left:0;justify-content:space-between}
+}

@@ -84,52 +84,6 @@ test('parseSubjects extrae correctamente materias, días y bloques', () => {
   assert.deepEqual(parsed[1].days, [2, 4]);
 });
 
-test('abre la ventana de bienvenida al entrar por primera vez sin materias', () => {
-  const mockDom = createMockDom();
-  globalThis.document = mockDom.document;
-  const store = new Map();
-  globalThis.localStorage = {
-    getItem: key => store.get(key) ?? null,
-    setItem: (key, val) => store.set(key, String(val)),
-  };
-
-  const state = { subjects: [] };
-  const onboarding = createOnboarding({
-    state,
-    ui: { anim: {} },
-    save() {},
-    render() {},
-    schedTable() { return ''; },
-  });
-
-  onboarding.initOnboarding();
-  const dlg = mockDom.element('onboardDlg');
-  assert.equal(dlg.hidden, false);
-});
-
-test('no abre la ventana de bienvenida si el usuario ya la completó u omitió', () => {
-  const mockDom = createMockDom();
-  globalThis.document = mockDom.document;
-  const store = new Map([['calc-notas-onboarded', '1']]);
-  globalThis.localStorage = {
-    getItem: key => store.get(key) ?? null,
-    setItem: (key, val) => store.set(key, String(val)),
-  };
-
-  const state = { subjects: [] };
-  const onboarding = createOnboarding({
-    state,
-    ui: { anim: {} },
-    save() {},
-    render() {},
-    schedTable() { return ''; },
-  });
-
-  onboarding.initOnboarding();
-  const dlg = mockDom.element('onboardDlg');
-  assert.equal(dlg.hidden, true);
-});
-
 test('agregar horario a mano cierra la bienvenida y abre el editor manual', () => {
   const mockDom = createMockDom();
   globalThis.document = mockDom.document;
@@ -155,7 +109,6 @@ test('agregar horario a mano cierra la bienvenida y abre el editor manual', () =
 
   mockDom.element('obSkip').click();
   assert.equal(mockDom.element('onboardDlg').hidden, true);
-  assert.equal(store.get('calc-notas-onboarded'), '1');
   assert.equal(manualOpened, true);
   assert.equal(state.subjects.length, 0);
 });

@@ -338,12 +338,13 @@ export function createQrTransfer({ state, ui, restoreSnapshot }) {
     pendingSnapshot = data;
     ui.dialogMode = 'qrreview';
     $('dt').textContent = 'Restaurar desde QR';
-    $('dp').textContent = 'Se reemplazarán tus materias, faltas y semestre actuales. Si el QR incluye IA, también se restaurará su configuración.';
+    $('dp').textContent = 'Se reemplazarán tus semestres, materias y faltas. Si el QR incluye IA, también se restaurará su configuración.';
     $('dmsg').textContent = '';
     $('dta').hidden = true;
     $('dtab').hidden = false;
-    var count = Array.isArray(data.subjects) ? data.subjects.length : 0;
-    var absences = Array.isArray(data.absences) ? data.absences.length : 0;
+    const periods = Array.isArray(data.semesters) && data.semesters.length ? data.semesters : [data];
+    const count = periods.reduce((total, period) => total + (Array.isArray(period?.subjects) ? period.subjects.length : 0), 0);
+    const absences = periods.reduce((total, period) => total + (Array.isArray(period?.absences) ? period.absences.length : 0), 0);
     var hasAi = Boolean(data.ai && isAIConfigured(data.ai));
     var provider = data.ai && data.ai.provider ? providerDefaults(data.ai.provider).label : 'sin proveedor';
     $('dtab').innerHTML = '<div class="qrreview">' +

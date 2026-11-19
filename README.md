@@ -24,13 +24,13 @@ Al eliminar una materia, ya sea desde su tarjeta o desde la lista de horarios, d
 
 El botón de papelera de la barra superior elimina **todos los datos**: materias, faltas, semestre, conexión de IA y la marca de bienvenida. Pide confirmación y no se puede deshacer; exporta o transfiere por QR antes de usarlo.
 
-Para mover todo a otro dispositivo sin backend, abre **Exportar datos** y pulsa el botón con el icono de QR. En el otro dispositivo abre **Importar datos** y pulsa el botón de la cámara. El QR incluye materias, faltas, semestre y la configuración de IA (también la clave, si la tienes configurada); trátalo como información privada. La importación por QR **reemplaza** los datos actuales, a diferencia de pegar el texto de exportación, que agrega materias.
+Para mover todo a otro dispositivo sin backend, abre **Exportar datos** y pulsa el botón con el icono de QR. En el otro dispositivo abre **Importar datos** y pulsa el botón de la cámara. El QR incluye materias, faltas, semestre y la configuración de IA (también la clave, si la tienes configurada); trátalo como información privada. Una copia completa, por QR o por texto, **reemplaza** los semestres, materias y faltas guardados. Una lista de materias del formato antiguo agrega materias al semestre activo. La copia por texto no incluye la clave de IA.
 
 En «Horario y faltas de asistencia» puedes agregar un horario a mano, editarlo y configurar las fechas del semestre y el porcentaje máximo de faltas. La foto del horario se puede leer con la API de IA que elijas; la sincronización con una cuenta sigue requiriendo el SDK de Claude que utilizaba el código original. Sin ninguna de las dos integraciones puedes editar los horarios manualmente y conservar los datos en el navegador.
 
 ## Asistente de bienvenida y foto de horario
 
-Al entrar por primera vez sin materias registradas, se abre automáticamente una ventana que te permite:
+Si quieres importar tu horario, pulsa **Subir foto de horario con IA**. Se abre una ventana que te permite:
 - **Subir la foto de tu horario** (arrastrando o seleccionando una imagen).
 - **Conectar tu API de IA** en la columna contigua (DeepSeek, OpenAI, OpenRouter, Anthropic, Gemini o una API compatible) para extraer las materias y horas automáticamente.
 - Al confirmar el horario detectado, entras directamente a la página con todas tus materias ya creadas.
