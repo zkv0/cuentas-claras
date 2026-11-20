@@ -17,7 +17,7 @@ export function createOnboarding({ state, ui, save, render, schedTable, openAddS
     const el = $('obStatusMsg');
     if (!el) return;
     el.textContent = text || '';
-    el.className = 'api-only m' + (type ? ' ' + type : '');
+    el.className = 'api-only grades-ai-status' + (type ? ' ' + type : '');
   }
 
   function resetFileSelection() {
@@ -36,7 +36,7 @@ export function createOnboarding({ state, ui, save, render, schedTable, openAddS
 
   function handleFile(file) {
     if (!file) return;
-    if (file.type && !file.type.startsWith('image/')) {
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) {
       setStatusMsg('Por favor selecciona un archivo de imagen compatible (JPG, PNG o WebP).', 'warn');
       return;
     }
@@ -87,29 +87,17 @@ export function createOnboarding({ state, ui, save, render, schedTable, openAddS
   const dropzone = $('obDropzone');
   const fileInput = $('obFile');
   if (dropzone && fileInput) {
-    dropzone.addEventListener('click', function (e) {
-      if (e.target.closest('#obChangePhoto')) {
-        fileInput.click();
-        return;
-      }
-      fileInput.click();
-    });
-    dropzone.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        fileInput.click();
-      }
-    });
+    dropzone.addEventListener('click', () => fileInput.click());
     dropzone.addEventListener('dragover', function (e) {
       e.preventDefault();
-      dropzone.classList.add('dragover');
+      dropzone.classList.add('dragging');
     });
     dropzone.addEventListener('dragleave', function () {
-      dropzone.classList.remove('dragover');
+      dropzone.classList.remove('dragging');
     });
     dropzone.addEventListener('drop', function (e) {
       e.preventDefault();
-      dropzone.classList.remove('dragover');
+      dropzone.classList.remove('dragging');
       const files = e.dataTransfer && e.dataTransfer.files;
       if (files && files.length) handleFile(files[0]);
     });
@@ -119,13 +107,7 @@ export function createOnboarding({ state, ui, save, render, schedTable, openAddS
     });
   }
 
-  const changePhotoBtn = $('obChangePhoto');
-  if (changePhotoBtn && fileInput) {
-    changePhotoBtn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      fileInput.click();
-    });
-  }
+  $('obClose').addEventListener('click', closeOnboarding);
 
   const adjustButton = $('obAdjustAI');
   adjustButton.addEventListener('click', () => {

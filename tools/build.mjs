@@ -1,5 +1,6 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 // Empaquetador local sin dependencias para los imports nombrados de este proyecto.
@@ -36,3 +37,19 @@ await writeFile(path.join(root, 'assets/app.bundle.js'),
   '(() => {\n"use strict";\nconst modules = Object.create(null);\n' +
   [...modules.values()].join('\n\n') + '\n})();\n', 'utf8');
 console.log(`JavaScript empaquetado: ${modules.size} módulos.`);
+
+// A different shell produces a different worker, so GitHub Pages can serve updates.
+const shell = [
+  'index.html', 'manifest.webmanifest',
+  'styles/main.css', 'styles/base.css', 'styles/components.css', 'styles/themes.css',
+  'assets/app.bundle.js', 'assets/cuentas-claras.svg', 'assets/qrcode.js',
+  'assets/lz-string.min.js', 'assets/jsQR.js',
+  'assets/icon-180.png', 'assets/icon-192.png', 'assets/icon-512.png'
+];
+const workerTemplate = await readFile(path.join(root, 'tools/sw-template.js'), 'utf8');
+const hash = createHash('sha256').update(workerTemplate);
+for (const name of shell) hash.update(name).update(await readFile(path.join(root, name)));
+const worker = workerTemplate
+  .replace('__CACHE_VERSION__', hash.digest('hex').slice(0, 16))
+  .replace('__SHELL_FILES__', JSON.stringify(shell));
+await writeFile(path.join(root, 'sw.js'), '// Generado por node tools/build.mjs.\n' + worker, 'utf8');

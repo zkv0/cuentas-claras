@@ -3,7 +3,7 @@ import { isAIConfigured, loadAIConfig, readGradesImage, buildGradesPrompt } from
 import { planGradeImport } from '../domain/grade-import.js';
 import { esc } from '../core/utils.js';
 
-export function createGradeImport({state, save, render, openAIConfig}) {
+export function createGradeImport({state, save, render, adjustAI}) {
   const $ = id => document.getElementById(id);
   let busy = false, undo = null, selectedFile = null, previewUrl = null;
   let pending = null;
@@ -49,8 +49,8 @@ export function createGradeImport({state, save, render, openAIConfig}) {
   const close = () => { $('gradesAiDlg').hidden = true; };
   $('gradesAiClose').addEventListener('click', close);
   $('gradesAiDlg').addEventListener('click', e => { if(e.target === $('gradesAiDlg')) close(); });
-  document.addEventListener('keydown', e => {if(e.key === 'Escape') close();});
-  $('gradesAiConfig').addEventListener('click', () => {close(); openAIConfig(false);});
+  document.addEventListener('keydown', e => {if(e.key === 'Escape' && !e.defaultPrevented) close();});
+  $('gradesAiConfig').addEventListener('click', () => {close(); adjustAI(openGradeImport);});
   $('gradesAiUndo').addEventListener('click', () => {
     if (!undo) return;
     if (state.activeSemesterId !== undo.semester || JSON.stringify(state.subjects) !== undo.after) {

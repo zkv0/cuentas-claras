@@ -2,6 +2,71 @@
 (() => {
 "use strict";
 const modules = Object.create(null);
+// src/features/install.js
+modules["src/features/install.js"] = (() => {
+function createInstallApp({openPanel, showMessage, isInstallOpen}) {
+  let promptEvent = null;
+  let installed = false;
+  const standalone = () => installed || window.matchMedia?.('(display-mode: standalone)')?.matches || globalThis.navigator?.standalone === true;
+
+  window.addEventListener?.('beforeinstallprompt', event => {
+    event.preventDefault();
+    promptEvent = event;
+    if (isInstallOpen()) openInstall();
+  });
+  window.addEventListener?.('appinstalled', () => {
+    installed = true;
+    promptEvent = null;
+    if (isInstallOpen()) openInstall();
+  });
+
+  function openInstall() {
+    if (standalone()) {
+      openPanel('installApp', {
+        title:'Cuentas Claras instalada',
+        description:'Puedes consultar tus notas y horarios sin conexión después de la primera carga.',
+        dismiss:'Volver'
+      });
+      return;
+    }
+    const ios = /iPhone|iPad|iPod/.test(globalThis.navigator?.userAgent || '') ||
+      (globalThis.navigator?.platform === 'MacIntel' && globalThis.navigator.maxTouchPoints > 1);
+    openPanel('installApp', {
+      title:'Instalar como app',
+      body:promptEvent ? '<p>Abre Cuentas Claras desde un icono y consulta tus datos sin conexión.</p>'
+        : ios ? '<ol><li>Abre esta página en Safari y toca Compartir.</li><li>Elige Añadir a pantalla de inicio.</li><li>Activa Abrir como app web, si aparece, y toca Añadir.</li></ol>'
+        : '<p>En el menú de tu navegador, busca Instalar aplicación o Añadir a pantalla de inicio.</p>',
+      confirm:promptEvent ? 'Instalar' : '',
+      dismiss:'Volver'
+    });
+  }
+
+  async function install() {
+    const offer = promptEvent;
+    if (!offer) return;
+    promptEvent = null;
+    try {
+      const result = await offer.prompt();
+      installed = result.outcome === 'accepted' || installed;
+      if (isInstallOpen()) openInstall();
+    } catch {
+      if (isInstallOpen()) {
+        openInstall();
+        showMessage('Usa la opción de instalación del menú del navegador.');
+      }
+    }
+  }
+
+  if (globalThis.isSecureContext && globalThis.navigator?.serviceWorker) {
+    navigator.serviceWorker.register('./sw.js', {updateViaCache:'none'})
+      .catch(error => console.warn('No se pudo preparar el acceso sin conexión.', error));
+  }
+  return {openInstall, install};
+}
+
+return { createInstallApp };
+})();
+
 // src/core/constants.js
 modules["src/core/constants.js"] = (() => {
 // Mantener esta clave permite abrir los datos guardados por la versión monolítica.
@@ -24,19 +89,18 @@ modules["src/services/ai.js"] = (() => {
 const { AI_KEY, LEGACY_DS_KEY } = modules["src/core/constants.js"];
 
 /** Lectura de horarios con APIs de IA que aceptan imágenes.
- * Se soportan endpoints compatibles con OpenAI y el formato de Anthropic.
+ * Se soportan endpoints compatibles con OpenAI.
  * La clave se usa directamente desde el navegador y nunca se incluye en la
  * exportación de datos. La app sigue funcionando sin conexión de IA.
  */
 const AI_MAX_IMAGE = 1800;
 
 const AI_PROVIDERS = [
-  { id: 'deepseek', label: 'DeepSeek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', format: 'openai', keyRequired: true },
-  { id: 'openai', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini', format: 'openai', keyRequired: true },
-  { id: 'openrouter', label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', model: 'openai/gpt-4o-mini', format: 'openai', keyRequired: true },
-  { id: 'anthropic', label: 'Anthropic (Claude)', baseUrl: 'https://api.anthropic.com', model: 'claude-sonnet-4-5', format: 'anthropic', keyRequired: true },
-  { id: 'google', label: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash', format: 'openai', keyRequired: true },
-  { id: 'custom', label: 'Otra API compatible con OpenAI', baseUrl: '', model: '', format: 'openai', keyRequired: false },
+  { id: 'deepseek', label: 'DeepSeek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', keyRequired: true },
+  { id: 'openai', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini', keyRequired: true },
+  { id: 'openrouter', label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', model: 'openai/gpt-4o-mini', keyRequired: true },
+  { id: 'google', label: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash', keyRequired: true },
+  { id: 'custom', label: 'Otra API compatible con OpenAI', baseUrl: '', model: '', keyRequired: false },
 ];
 
 let memoryConfig = null;
@@ -52,7 +116,6 @@ function providerDefaults(id) {
     model: provider.model,
     label: provider.label,
     keyRequired: provider.keyRequired,
-    format: provider.format,
   };
 }
 
@@ -67,7 +130,7 @@ function normalizeBase(value, fallback) {
 }
 
 function normalizeAIConfig(raw) {
-  var source = raw && typeof raw === 'object' ? raw : {};
+  var source = raw && typeof raw === 'object' && (!raw.provider || AI_PROVIDERS.some(item => item.id === raw.provider)) ? raw : {};
   var provider = AI_PROVIDERS.some(item => item.id === source.provider) ? source.provider : 'deepseek';
   var preset = providerInfo(provider);
   return {
@@ -80,16 +143,18 @@ function normalizeAIConfig(raw) {
 }
 
 function readConfigKey(key) {
-  try {
-    var local = localStorage.getItem(key);
-    if (local) return JSON.parse(local);
-  } catch (error) {}
-  try {
-    if (typeof sessionStorage !== 'undefined') {
-      var session = sessionStorage.getItem(key);
-      if (session) return JSON.parse(session);
-    }
-  } catch (error) {}
+  for (const area of ['localStorage', 'sessionStorage']) {
+    try {
+      const storage = globalThis[area];
+      const raw = JSON.parse(storage?.getItem(key) ?? 'null');
+      if (!raw || typeof raw !== 'object') continue;
+      if (raw.provider && !AI_PROVIDERS.some(provider => provider.id === raw.provider)) {
+        storage.removeItem(key);
+        continue;
+      }
+      return raw;
+    } catch {}
+  }
   return null;
 }
 
@@ -154,29 +219,9 @@ function buildSchedulePrompt(names) {
   ].join(' ');
 }
 
-function splitDataUrl(value) {
-  var match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/i.exec(String(value || ''));
-  if (!match) return null;
-  return { mediaType: match[1], data: match[2] };
-}
-
 function buildScheduleRequest(config, imageUrls, prompt, maxTokens) {
   var normalized = normalizeAIConfig(config);
-  var info = providerInfo(normalized.provider);
   var text = String(prompt || buildSchedulePrompt([]));
-  if (info.format === 'anthropic') {
-    const images = imageUrls.map(url => {
-      const source = splitDataUrl(url);
-      return source
-        ? { type: 'image', source: { type: 'base64', media_type: source.mediaType, data: source.data } }
-        : { type: 'image', source: { type: 'url', url } };
-    });
-    return {
-      model: normalized.model,
-      max_tokens: maxTokens,
-      messages: [{ role: 'user', content: [{ type: 'text', text: text }, ...images] }],
-    };
-  }
   var body = {
     model: normalized.model,
     messages: [{
@@ -277,46 +322,22 @@ function contentText(content) {
   return content == null ? '' : String(content);
 }
 
-function responseContent(data, info) {
-  if (info.format === 'anthropic') return contentText(data && data.content);
+function responseContent(data) {
   var choice = data && data.choices && data.choices[0];
   return contentText(choice && choice.message && choice.message.content);
 }
 
 function cleanBase(value) {
-  return String(value || '').trim().replace(/\/+$/, '').replace(/\/(chat\/completions|messages|models)$/, '');
+  return String(value || '').trim().replace(/\/+$/, '').replace(/\/(chat\/completions|models)$/, '');
 }
 
 function openAIEndpoint(base, path) {
   return cleanBase(base) + path;
 }
 
-function anthropicEndpoint(base, path) {
-  var clean = cleanBase(base);
-  return /\/v1$/.test(clean) ? clean + path : clean + '/v1' + path;
-}
-
-function chatEndpoint(config, info) {
-  return info.format === 'anthropic'
-    ? anthropicEndpoint(config.baseUrl, '/messages')
-    : openAIEndpoint(config.baseUrl, '/chat/completions');
-}
-
-function modelsEndpoint(config, info) {
-  return info.format === 'anthropic'
-    ? anthropicEndpoint(config.baseUrl, '/models')
-    : openAIEndpoint(config.baseUrl, '/models');
-}
-
-function requestHeaders(config, info, hasBody) {
-  var headers = {};
-  if (info.format === 'anthropic') {
-    headers['x-api-key'] = config.apiKey;
-    headers['anthropic-version'] = '2023-06-01';
-    headers['anthropic-dangerous-direct-browser-access'] = 'true';
-  } else if (config.apiKey) {
-    headers.Authorization = 'Bearer ' + config.apiKey;
-  }
+function requestHeaders(config, hasBody) {
+  const headers = {};
+  if (config.apiKey) headers.Authorization = 'Bearer ' + config.apiKey;
   if (hasBody) headers['Content-Type'] = 'application/json';
   return headers;
 }
@@ -395,10 +416,10 @@ const readScheduleImage = async function (image, config, prompt, documentName = 
     imageUrls.push(typeof item === 'string' && /^data:image\//i.test(item) ? item : await prepareImage(item));
   }
   var body = buildScheduleRequest(normalized, imageUrls, prompt, maxTokens);
-  var url = chatEndpoint(normalized, info);
+  var url = openAIEndpoint(normalized.baseUrl, '/chat/completions');
   var options = {
     method: 'POST',
-    headers: requestHeaders(normalized, info, true),
+    headers: requestHeaders(normalized, true),
     body: JSON.stringify(body),
   };
   var data;
@@ -412,14 +433,14 @@ const readScheduleImage = async function (image, config, prompt, documentName = 
     delete retryBody.response_format;
     data = await requestJson(url, {
       method: 'POST',
-      headers: requestHeaders(normalized, info, true),
+      headers: requestHeaders(normalized, true),
       body: JSON.stringify(retryBody),
     }, 90000, info.label);
   }
-  var content = responseContent(data, info);
+  var content = responseContent(data);
   if (!content.trim()) {
     data = await requestJson(url, options, 90000, info.label);
-    content = responseContent(data, info);
+    content = responseContent(data);
   }
   var parsed = extractJson(content);
   if (!parsed || !Array.isArray(parsed[collection])) {
@@ -432,11 +453,11 @@ const testAIConnection = async function (config) {
   var checked = validateConfig(config);
   var normalized = checked.config;
   var info = checked.info;
-  var url = modelsEndpoint(normalized, info);
+  var url = openAIEndpoint(normalized.baseUrl, '/models');
   try {
     var data = await requestJson(url, {
       method: 'GET',
-      headers: requestHeaders(normalized, info, false),
+      headers: requestHeaders(normalized, false),
     }, 20000, info.label);
     var list = Array.isArray(data && data.data) ? data.data : [];
     return list.map(function (model) {
@@ -602,9 +623,10 @@ const prompt = [
   'Merge fragments of the same semester and deduplicate courses from overlapping pages. Do not invent data. If this is not a curriculum, return {"semestres":[]}.'
 ].join(' ');
 
-function createCurriculumImport({state, importCurriculum, refreshSemesters, render, openAIConfig}) {
+function createCurriculumImport({state, importCurriculum, refreshSemesters, render, adjustAI}) {
   const el = suffix => document.getElementById('curriculum' + suffix);
   const dlg = el('Dlg'), status = el('Status'), review = el('Review'), apply = el('Apply');
+  let files = [];
   let periods = null, reviewedMatches = '', request = 0;
 
   function clearReview() {
@@ -664,19 +686,42 @@ function createCurriculumImport({state, importCurriculum, refreshSemesters, rend
   el('Close').addEventListener('click', close);
   dlg.addEventListener('click', event => { if (event.target === dlg) close(); });
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && !dlg.hidden) close();
+    if (event.key === 'Escape' && !event.defaultPrevented && !dlg.hidden) close();
   });
 
-  el('Config').addEventListener('click', () => { close(); openAIConfig(false); });
+  el('Config').addEventListener('click', () => { close(); adjustAI(openCurriculum); });
   document.getElementById('cuMethod').addEventListener('change', () => {
     request++;
     el('Read').disabled = false;
     clearReview();
   });
-  el('Files').addEventListener('change', () => {
+  const picker = el('Drop');
+  function selectFiles(selection) {
+    const next = Array.from(selection || []);
+    if (!next.length) return;
+    if (next.some(file => !/^image\/(png|jpeg|webp)$/.test(file.type))) {
+      status.textContent = 'Selecciona capturas en PNG, JPG o WebP.';
+      return;
+    }
+    files = next;
     request++;
     el('Read').disabled = false;
     clearReview();
+    el('Name').textContent = files.length === 1 ? files[0].name : files.length + ' capturas seleccionadas';
+    el('Preview').hidden = false;
+    el('Empty').hidden = true;
+  }
+  picker.addEventListener('click', () => el('Files').click());
+  el('Files').addEventListener('change', event => {
+    selectFiles(event.target.files);
+    event.target.value = '';
+  });
+  picker.addEventListener('dragover', event => { event.preventDefault(); picker.classList.add('dragging'); });
+  picker.addEventListener('dragleave', () => picker.classList.remove('dragging'));
+  picker.addEventListener('drop', event => {
+    event.preventDefault();
+    picker.classList.remove('dragging');
+    selectFiles(event.dataTransfer?.files);
   });
 
   el('Read').addEventListener('click', async () => {
@@ -686,8 +731,7 @@ function createCurriculumImport({state, importCurriculum, refreshSemesters, rend
       status.textContent = 'Configura una API con un modelo que pueda leer imágenes.';
       return;
     }
-    const files = [...el('Files').files];
-    if (!files.length || files.some(file => !/^image\/(png|jpeg|webp)$/.test(file.type))) {
+    if (!files.length) {
       status.textContent = 'Selecciona capturas en PNG, JPG o WebP.';
       return;
     }
@@ -876,7 +920,7 @@ const { planGradeImport } = modules["src/domain/grade-import.js"];
 
 const { esc } = modules["src/core/utils.js"];
 
-function createGradeImport({state, save, render, openAIConfig}) {
+function createGradeImport({state, save, render, adjustAI}) {
   const $ = id => document.getElementById(id);
   let busy = false, undo = null, selectedFile = null, previewUrl = null;
   let pending = null;
@@ -922,8 +966,8 @@ function createGradeImport({state, save, render, openAIConfig}) {
   const close = () => { $('gradesAiDlg').hidden = true; };
   $('gradesAiClose').addEventListener('click', close);
   $('gradesAiDlg').addEventListener('click', e => { if(e.target === $('gradesAiDlg')) close(); });
-  document.addEventListener('keydown', e => {if(e.key === 'Escape') close();});
-  $('gradesAiConfig').addEventListener('click', () => {close(); openAIConfig(false);});
+  document.addEventListener('keydown', e => {if(e.key === 'Escape' && !e.defaultPrevented) close();});
+  $('gradesAiConfig').addEventListener('click', () => {close(); adjustAI(openGradeImport);});
   $('gradesAiUndo').addEventListener('click', () => {
     if (!undo) return;
     if (state.activeSemesterId !== undo.semester || JSON.stringify(state.subjects) !== undo.after) {
@@ -1001,27 +1045,47 @@ function exportScheduleImage(state, onError, semesterId = state.activeSemesterId
   const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
   const ctx=canvas.getContext('2d');
   if(!ctx){onError('No se pudo crear la imagen.');return}
-  ctx.fillStyle='#151515';ctx.fillRect(0,0,width,height);
-  ctx.fillStyle='#eeeeee';ctx.font='500 30px Arial';ctx.fillText('Horario · '+(semester?.name||'Semestre'),32,52,width-64);
-  ctx.font='20px Arial';ctx.fillStyle='#bdbdbd';
+
+  const theme = getComputedStyle(document.documentElement);
+  const color = name => theme.getPropertyValue(name).trim();
+  const background = color('--bg');
+  const ink = color('--ink');
+  const muted = color('--muted');
+  const lineColor = color('--line');
+  const blockBackground = color('--strong-surface') || color('--surface3');
+  const typeface = color('--ui-typeface') || 'Arial';
+  const radius = parseFloat(color('--schedule-radius')) || 0;
+  const stroke = parseFloat(color('--custom-stroke')) || 0;
+  ctx.fillStyle=background;ctx.fillRect(0,0,width,height);
+  ctx.fillStyle=ink;ctx.font='500 30px '+typeface;ctx.fillText('Horario · '+(semester?.name||'Semestre'),32,52,width-64);
+  ctx.font='20px '+typeface;ctx.fillStyle=color('--custom-text') || color('--accent');
   days.forEach((day,i)=>ctx.fillText(day,left+i*col+12,120));
+  ctx.strokeStyle=lineColor;
   for(let h=low;h<=high;h++){
-    const y=top+(h-low)*hour;ctx.strokeStyle='#333333';ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(left+7*col,y);ctx.stroke();
-    ctx.fillStyle='#aaaaaa';ctx.font='16px Arial';ctx.fillText(fm(h*60),24,y+6);
+    const y=top+(h-low)*hour;ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(left+7*col,y);ctx.stroke();
+    ctx.fillStyle=muted;ctx.font='16px '+typeface;ctx.fillText(fm(h*60),24,y+6);
   }
-  for(let d=0;d<=7;d++){ctx.strokeStyle='#333333';ctx.beginPath();ctx.moveTo(left+d*col,top);ctx.lineTo(left+d*col,top+(high-low)*hour);ctx.stroke()}
+  for(let d=0;d<=7;d++){ctx.beginPath();ctx.moveTo(left+d*col,top);ctx.lineTo(left+d*col,top+(high-low)*hour);ctx.stroke()}
   blocks.forEach(b=>{
     const x=left+order.indexOf(b.day)*col+3,y=top+(b.start/60-low)*hour+2,h=(b.end-b.start)/60*hour-4;
-    ctx.fillStyle='#303030';ctx.fillRect(x,y,col-6,h);
+    ctx.fillStyle=blockBackground;
+    if (radius || stroke) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(x,y,col-6,Math.max(1,h),radius);
+      ctx.fill();
+      if (stroke) { ctx.lineWidth=stroke;ctx.stroke(); }
+      ctx.restore();
+    } else ctx.fillRect(x,y,col-6,h);
     ctx.save();ctx.beginPath();ctx.rect(x+6,y+2,col-18,h-4);ctx.clip();
-    ctx.fillStyle='#cccccc';ctx.font='15px Arial';ctx.fillText(fm(b.start)+' – '+fm(b.end),x+9,y+19);
-    ctx.fillStyle='#ffffff';ctx.font='18px Arial';
+    ctx.fillStyle=muted;ctx.font='15px '+typeface;ctx.fillText(fm(b.start)+' - '+fm(b.end),x+9,y+19);
+    ctx.fillStyle=ink;ctx.font='18px '+typeface;
     let line='',row=0;for(const word of b.name.split(/\s+/)){
       const next=line?line+' '+word:word;
       if(ctx.measureText(next).width>col-28&&line){ctx.fillText(line,x+9,y+43+row*22,col-28);row++;line=word}else line=next;
     }ctx.fillText(line,x+9,y+43+row*22,col-28);ctx.restore();
   });
-  ctx.font='18px Arial';ctx.fillStyle='#bdbdbd';loose.forEach((text,i)=>ctx.fillText(text,32,top+(high-low)*hour+35+i*30,width-64));
+  ctx.font='18px '+typeface;ctx.fillStyle=muted;loose.forEach((text,i)=>ctx.fillText(text,32,top+(high-low)*hour+35+i*30,width-64));
   canvas.toBlob(blob=>{
     if(!blob){onError('No se pudo crear la imagen.');return}
     const url=URL.createObjectURL(blob),link=document.createElement('a');
@@ -1031,6 +1095,196 @@ function exportScheduleImage(state, onError, semesterId = state.activeSemesterId
 }
 
 return { exportScheduleImage };
+})();
+
+// src/features/custom-appearance.js
+modules["src/features/custom-appearance.js"] = (() => {
+const { esc, uid } = modules["src/core/utils.js"];
+
+const themeColors = [
+  ['background', 'Fondo', '--bg', '#000000'],
+  ['surface', 'Superficies', '--surface', '#121212'],
+  ['text', 'Texto', '--ink', '#e8e8e8'],
+  ['muted', 'Subtextos', '--muted', '#a8a8a8'],
+  ['accent', 'Acento', '--accent', '#e6e6e6'],
+  ['border', 'Bordes', '--outline', '#4d4d4d']
+];
+
+function readList(key){
+  try {
+    const list = JSON.parse(localStorage.getItem(key));
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+
+function toHex(color, fallback){
+  if (/^#[\da-f]{6}$/i.test(color)) return color;
+  if (/^#[\da-f]{3}$/i.test(color)) return '#' + [...color.slice(1)].map(digit => digit.repeat(2)).join('');
+  const rgb = color.match(/^rgb\(\s*(\d{1,3})[, ]+\s*(\d{1,3})[, ]+\s*(\d{1,3})\s*\)$/);
+  if (rgb?.slice(1).some(channel => Number(channel) > 255)) return fallback;
+  return rgb ? '#' + rgb.slice(1).map(channel => Number(channel).toString(16).padStart(2, '0')).join('') : fallback;
+}
+
+function readableInk(hex){
+  const channels = hex.slice(1).match(/../g).map(channel => parseInt(channel, 16) / 255)
+    .map(channel => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+  const luminance = 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  return luminance > 0.179 ? '#000000' : '#ffffff';
+}
+
+function bounded(value, max, fallback){
+  return value === '' || value == null || !Number.isFinite(Number(value))
+    ? fallback : Math.min(max, Math.max(0, Math.round(Number(value))));
+}
+
+function normalizeCustomTheme(theme){
+  const colors = Object.fromEntries(themeColors.map(([key, , , fallback]) =>
+    [key, toHex(String(theme[key] ?? ''), fallback)]));
+  return {
+    id: theme.id, name: String(theme.name ?? '').trim().slice(0, 40),
+    ...colors, radius: bounded(theme.radius, 48, 16), stroke: bounded(theme.stroke, 8, 0),
+    contrast: ['normal', 'high'].includes(theme.contrast) ? theme.contrast : 'system'
+  };
+}
+
+function themeFromPage(root){
+  const style = getComputedStyle(root);
+  return normalizeCustomTheme(Object.fromEntries(themeColors.map(([key, , token]) =>
+    [key, style.getPropertyValue(token).trim()])));
+}
+
+function customContrast(theme, preference){
+  return theme?.contrast && theme.contrast !== 'system' ? theme.contrast === 'high' : preference;
+}
+
+function customThemeStyle(element, theme, highContrast){
+  const tokens = ['background', 'surface', 'text', 'muted', 'accent', 'accent-ink', 'border', 'stroke', 'scheme', 'contrast-base'];
+  if (!theme) {
+    if (element.dataset.theme === 'custom') {
+      tokens.forEach(token => element.style.removeProperty('--custom-' + token));
+    }
+    return;
+  }
+  const backgroundInk = readableInk(theme.background);
+  const light = backgroundInk === '#000000';
+  const surface = highContrast && readableInk(theme.surface) !== backgroundInk ? theme.background : theme.surface;
+  const values = [
+    theme.background, surface, highContrast ? backgroundInk : theme.text,
+    highContrast ? backgroundInk : theme.muted, theme.accent, readableInk(theme.accent), highContrast ? backgroundInk : theme.border,
+    theme.stroke + 'px', light ? 'light' : 'dark',
+    highContrast ? (light ? '#ffffff' : '#000000') : theme.text
+  ];
+  tokens.forEach((token, index) => element.style.setProperty('--custom-' + token, values[index]));
+}
+
+function themeEditorHtml(theme){
+  return `<div class="appearance-editor">
+    <div class="custom-theme-sample" id="customThemeSample">
+      <header><strong>Vista previa</strong><small>Semestre 1</small></header>
+      <article><header><strong>Cálculo integral</strong><b>3,8</b></header>
+        <p>Primer parcial <span>30 % · 4,2</span></p>
+        <p>Segundo parcial <span>30 % · Pendiente</span></p>
+        <span class="custom-theme-action">Añadir nota</span>
+      </article>
+      <article><header><strong>Horario semanal</strong><small>Lunes</small></header>
+        <p class="sample-class"><b>08:00</b><span>Cálculo integral</span></p>
+      </article>
+    </div>
+    <label class="appearance-field">Nombre<input id="customThemeName" maxlength="40" value="${esc(theme.name)}" placeholder="Mi tema"></label>
+    <div class="appearance-colors">${themeColors.map(([key, label]) =>
+      `<label>${label}<input type="color" id="customColor-${key}" value="${theme[key]}"></label>`).join('')}</div>
+    <div class="appearance-dimensions">
+      <label class="appearance-field">Grosor del borde (px)<input type="number" id="customStroke" min="0" max="8" step="1" value="${theme.stroke}"></label>
+    </div>
+    <label class="appearance-field">Contraste<select id="customContrast">
+      ${[['system','Usar ajuste general'],['normal','Normal'],['high','Alto']].map(([value,label]) =>
+        `<option value="${value}"${theme.contrast === value ? ' selected' : ''}>${label}</option>`).join('')}
+    </select></label>
+    ${theme.id ? '<button type="button" class="ghost settings-delete" data-act="removeCustomTheme">Eliminar tema</button>' : ''}
+  </div>`;
+}
+
+const customThemesKey = 'cuentas-claras-custom-themes';
+const customFontsKey = 'cuentas-claras-custom-fonts';
+
+function createCustomAppearance(){
+  let themes = readList(customThemesKey).filter(item => /^theme-[\da-z]+$/.test(item?.id)).map(normalizeCustomTheme);
+  let fonts = readList(customFontsKey).filter(item => /^font-[\da-z]+$/.test(item?.id) &&
+    typeof item.name === 'string' && typeof item.data === 'string');
+  const faces = new Map();
+
+  function saveTheme(theme){
+    const saved = { ...theme, id: theme.id || 'theme-' + uid() };
+    const next = theme.id ? themes.map(item => item.id === theme.id ? saved : item) : [...themes, saved];
+    localStorage.setItem(customThemesKey, JSON.stringify(next));
+    themes = next;
+    return saved.id;
+  }
+
+  function removeTheme(id){
+    const next = themes.filter(item => item.id !== id);
+    localStorage.setItem(customThemesKey, JSON.stringify(next));
+    themes = next;
+  }
+
+  async function readFont(file){
+    if (!/\.(woff2?|ttf|otf)$/i.test(file.name)) throw new Error('Elige un archivo WOFF2, WOFF, TTF u OTF.');
+    const data = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reader.onabort = () => reject(new Error('No se pudo leer el archivo.'));
+      reader.readAsDataURL(file);
+    });
+    const font = { id: 'font-' + uid(), name: file.name.replace(/\.[^.]+$/, '').slice(0, 80), data };
+    try { return { font, face: await decodeFont(font) }; }
+    catch { throw new Error('El navegador no pudo cargar esta fuente.'); }
+  }
+
+  function decodeFont(font){
+    return new FontFace(font.id, Uint8Array.from(atob(font.data), char => char.charCodeAt(0))).load();
+  }
+
+  function addFont({ font, face }){
+    const next = [...fonts, font];
+    localStorage.setItem(customFontsKey, JSON.stringify(next));
+    fonts = next;
+    document.fonts.add(face);
+    faces.set(font.id, face);
+    return font.id;
+  }
+
+  async function loadFont(font){
+    if (faces.has(font.id)) return;
+    const face = await decodeFont(font);
+    if (fonts.includes(font) && !faces.has(font.id)) {
+      document.fonts.add(face);
+      faces.set(font.id, face);
+    }
+  }
+
+  function removeFont(id){
+    const next = fonts.filter(font => font.id !== id);
+    localStorage.setItem(customFontsKey, JSON.stringify(next));
+    fonts = next;
+    if (faces.has(id)) document.fonts.delete(faces.get(id));
+    faces.delete(id);
+  }
+
+  function reset(){
+    for (const face of faces.values()) document.fonts.delete(face);
+    faces.clear();
+    themes = [];
+    fonts = [];
+  }
+
+  return {
+    get themes(){ return themes; },
+    get fonts(){ return fonts; },
+    saveTheme, removeTheme, readFont, addFont, loadFont, removeFont, reset
+  };
+}
+
+return { themeColors, normalizeCustomTheme, themeFromPage, customContrast, customThemeStyle, themeEditorHtml, customThemesKey, customFontsKey, createCustomAppearance };
 })();
 
 // src/domain/search.js
@@ -1154,20 +1408,21 @@ function createSubjectsView({ state, ui, open, open2, find, allowed, faltHtml, r
       if(go){h+='<div class="grpbody">';gi.forEach(function(i){h+=rowHtml(sub.rows[i],i,true)});h+='</div>'}
     }
     oi.forEach(function(i){h+=rowHtml(sub.rows[i],i,false)});
-    return h+'<div class="actions"><button data-act="addRow">Agregar evaluación</button><button class="ghost" data-act="archive">'+(sub.archived?"Restaurar":"Archivar")+'</button><button class="ghost" data-act="delSub">Eliminar materia</button></div></div>';
+    return h+'<div class="actions"><button data-act="addRow">Agregar nota</button><button class="ghost" data-act="archive">'+(sub.archived?"Restaurar":"Archivar")+'</button><button class="ghost" data-act="delSub">Eliminar materia</button></div></div>';
   }
   function cardHtml(sub){
     var o=!!open[sub.id],ro=ui.reorderId===sub.id;
+    const absenceBadge = sub.days?.length ? '<span class="fbox"></span>' : '';
     var name='<input class="n name subject-name" data-k="name" aria-label="Nombre de la materia" placeholder="Nombre de la materia" value="'+esc(sub.name)+'">';
     return '<section class="card'+(o&&!ro?" open":"")+(ro?" reorder":"")+'" data-id="'+sub.id+'">'+
         (ro?'<div class="item ro"><span class="t">'+name+'<span class="m"></span></span><span class="chip"></span><span class="mv"><button class="ghost" data-act="move" data-dir="-1" aria-label="Subir">↑</button><button class="ghost" data-act="move" data-dir="1" aria-label="Bajar">↓</button><button class="p" data-act="doneReorder">Listo</button></span></div>'
-          :'<div class="item" data-toggle aria-expanded="'+o+'"><span class="t">'+name+'<span class="m"></span></span><span class="fbox"></span><span class="chip"></span><span class="chev">›</span></div>'+(o?bodyHtml(sub):""))+
+          :'<div class="item" data-toggle aria-expanded="'+o+'"><span class="t">'+name+'<span class="m"></span></span>'+absenceBadge+'<span class="chip"></span><span class="chev">›</span></div>'+(o?bodyHtml(sub):""))+
         '</section>';
   }
   function renderRaw(){
     var app=document.getElementById("app");
     var act=state.subjects.filter(function(x){return !x.archived}),arc=state.subjects.filter(function(x){return x.archived}),h="";
-    if(!state.subjects.length)h='<div class="empty"><p>Aún no tienes materias.</p><div class="empty-acts"><button class="p" data-act="openOnboard">Subir foto de horario con IA</button><button class="ghost" data-act="addSched">Agregar horario a mano</button></div></div>';
+    if(!state.subjects.length)h='<div class="empty"><p>Aún no tienes materias.</p><div class="empty-acts"><button class="p" data-act="addSched">Añadir materia</button><button class="ghost" data-act="openOnboard">Subir horario con IA</button></div></div>';
     else{
       h=faltHtml()+(act.length?act.map(cardHtml).join(""):'<div class="empty">No tienes materias activas.</div>');
       if(arc.length){
@@ -1198,10 +1453,16 @@ function createSubjectsView({ state, ui, open, open2, find, allowed, faltHtml, r
     var c=calc(sub),ch=chip(c);
     var nameInput=card.querySelector(".subject-name");
     if(nameInput&&document.activeElement!==nameInput)nameInput.value=sub.name;
-    var fc=state.absences.filter(function(a){return a.ids.indexOf(sub.id)>=0}).length,mx=allowed(sub),mEl=card.querySelector(".m");
+    var mEl=card.querySelector(".m");
     mEl.textContent=(sub.cancelled?"Cancelada":ch.t)+" · "+f(c.graded)+"% evaluado";
     mEl.classList.toggle("warn",ch.cls==="bad");
-    var fb=card.querySelector(".fbox");if(fb){fb.textContent=fc+(mx!==null?"/"+mx:"")+(fc===1&&mx===null?" falta":" faltas");fb.classList.toggle("warn",mx!==null&&fc>mx)}
+    const fb = card.querySelector('.fbox');
+    if (fb) {
+      const count = state.absences.filter(absence => absence.ids.includes(sub.id)).length;
+      const max = allowed(sub);
+      fb.textContent = count + (max !== null ? '/' + max : '') + (count === 1 && max === null ? ' falta' : ' faltas');
+      fb.classList.toggle('warn', max !== null && count > max);
+    }
     var cp=card.querySelector(".chip");cp.className="chip"+(c.earned>=c.min?" ok":"");cp.textContent=f(c.earned);
     var gm=card.querySelector(".gm");
     if(gm){var gc=sub.rows.filter(isGraded).length;gm.textContent=gc+(gc===1?" evaluación":" evaluaciones")+" · "+f(c.graded)+"% · acumulado "+f(c.earned)}
@@ -1294,13 +1555,13 @@ const { num, uid } = modules["src/core/utils.js"];
 
 const { KEY } = modules["src/core/constants.js"];
 
-const state = { subjects: [], absences: [], sem: { start: '', end: '', pct: '' }, updatedAt: 0 };
-let saved = () => {};
+const state = { subjects: [], absences: [], sem: { start: '', end: '', pct: '' } };
 
 try {
   const data = JSON.parse(localStorage.getItem(KEY));
   if (data && Array.isArray(data.subjects)) {
-    Object.assign(state, data);
+    const {updatedAt: _oldTimestamp, ...localData} = data;
+    Object.assign(state, localData);
     state.subjects = state.subjects.filter(subject => subject && Array.isArray(subject.rows));
   }
 } catch (error) {
@@ -1390,7 +1651,6 @@ function normalizeScale() {
 }
 normalizeScale();
 
-function onSave(callback) { saved = callback; }
 function find(id) { return state.subjects.find(subject => subject.id === id); }
 
 /** Elimina una materia de la lista y de todas las faltas que la referencian.
@@ -1409,22 +1669,20 @@ function save() {
   commitSemester();
   normalizeAbsencePct();
   normalizeScale();
-  state.updatedAt = Date.now();
   try {
     localStorage.setItem(KEY, JSON.stringify(state));
   } catch (error) {
     console.warn('No se pudieron guardar los datos locales.', error);
-    const status = document.getElementById('sync');
+    const status = document.getElementById('saveStatus');
     if (status) {
       status.hidden = false;
-      status.className = 'sync warn';
+      status.className = 'save-status warn';
       status.textContent = 'No se pudo guardar en este dispositivo. Exporta tus datos para conservarlos.';
     }
   }
-  saved();
 }
 
-return { state, initializeSemesters, commitSemester, switchSemester, addSemester, importCurriculum, removeSemester, onSave, find, removeSubject, save };
+return { state, initializeSemesters, commitSemester, switchSemester, addSemester, importCurriculum, removeSemester, find, removeSubject, save };
 })();
 
 // src/domain/attendance.js
@@ -1554,56 +1812,45 @@ const { esc, tm, toMin, fm } = modules["src/core/utils.js"];
 
 const { DIAS } = modules["src/core/constants.js"];
 
-const { AI_PROVIDERS, providerDefaults, loadAIConfig, saveAIConfig, clearAIConfig, isAIConfigured, readScheduleImage, testAIConnection, buildSchedulePrompt } = modules["src/services/ai.js"];
+const { AI_PROVIDERS, providerDefaults, loadAIConfig, saveAIConfig, clearAIConfig, isAIConfigured, testAIConnection } = modules["src/services/ai.js"];
 
-/** Edición manual y lectura de la foto con una API de IA configurable.
- * Si no hay conexión configurada se mantiene el SDK del entorno Claude como
- * alternativa y, si tampoco existe, se abre el formulario de conexión.
- */
-function createSchedule({ state, ui, save, render, find, limitLine, openPanel, closeDlg, removeSubject }) {
+function createSchedule({ state, ui, save, render, find, openPanel, closeDlg, removeSubject }) {
   const $ = id => document.getElementById(id);
   let pendingSched = null, scheduleReview = null;
-  var ORDD=[1,2,3,4,5,6,0],editDraft=null,editSubId=null,addDraft=null,addReturnToList=false,aiPendingUpload=false;
-  function horSummary(x){
-    var on=(x.days||[]).length>0;
-    if(!on)return '<p class="m hsnone">Sin horario</p>';
-        var lines='';
-    ORDD.forEach(function(d){
-      if(x.days.indexOf(d)<0)return;
-      var bl=(x.blocks||[]).filter(function(b){return b.d===d});
-      var t=bl.length?bl.map(function(b){return b.s&&b.e?b.s+" – "+b.e:"sin hora"}).join(", "):"sin hora";
-      lines+='<div class="hl2"><span>'+DIAS[d]+'</span><span>'+esc(t)+'</span></div>';
-    });
-    return '<div class="hlines">'+lines+'</div>'+limitLine(x);
-  }
-  function openHorList(){
-    editSubId=null;editDraft=null;
-    var subs=state.subjects.filter(function(x){return !x.archived});
-    var h='<div class="hl-actions"><button class="p" data-hl-new>Agregar materia</button></div>';
-    if(!subs.length)h+='<p class="m">Aún no tienes materias. Agrega la primera con su horario.</p>';
-    subs.forEach(function(x){
-      var on=(x.days||[]).length>0;
-      h+='<div class="srow"><div><span class="fd">'+esc(x.name||"Sin nombre")+'</span>'+horSummary(x)+'</div><div class="sact"><button class="ghost" data-hl-edit="'+x.id+'">'+(on?"Modificar horario":"Agregar horario")+'</button>'+(on?'<button class="ghost" data-hl-delete="'+x.id+'">Eliminar materia</button>':'')+'</div></div>';
-    });
+  const ORDD = [1,2,3,4,5,6,0];
+  const editDrafts = new Map();
+  let addDraft = null, addReturnToList = false;
+
+  function openHorList(reset = true){
+    if (reset) editDrafts.clear();
+    const subjects = state.subjects.filter(subject => !subject.archived);
+    const rows = subjects.map(subject => {
+      if (!editDrafts.has(subject.id)) {
+        const days = [...(subject.days || [])];
+        const blocks = (subject.blocks || []).map(block => ({d:+block.d,s:block.s || '',e:block.e || ''}));
+        for (const day of days) {
+          if (!blocks.some(block => block.d === day)) blocks.push({d:day,s:'',e:''});
+        }
+        editDrafts.set(subject.id, {name:subject.name || '', days, blocks, changed:false});
+      }
+      const draft = editDrafts.get(subject.id);
+      const id = esc(subject.id);
+      return '<section class="srow" data-hl-subject="'+id+'"><header><input class="schedule-subject-name" data-hl-name aria-label="Nombre de la materia" placeholder="Nombre de la materia" value="'+esc(draft.name)+'">'+
+        '<button type="button" class="icon schedule-delete" data-hl-delete="'+id+'" aria-label="Eliminar materia" title="Eliminar materia">'+
+        '<svg aria-hidden="true" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v6m4-6v6"/></svg></button></header>'+
+        '<div data-hl-fields>'+scheduleEditor(draft)+'</div></section>';
+    }).join('');
     openPanel('horlist', {
       title:'Editar horario',
-      description:'Modifica el horario de cada materia o elimínala para quitarla de la lista, el horario y las faltas.',
-      body:h
+      body:'<div class="hl-actions"><button type="button" class="ghost" data-hl-new>Añadir materia</button></div>'+
+        (rows || '<p class="m">Aún no tienes materias.</p>'),
+      confirm:subjects.length ? 'Guardar horario' : ''
     });
   }
-  function openSchedEdit(sub){
-    if(!sub)return;
-    editSubId=sub.id;
-    editDraft={days:(sub.days||[]).slice(),blocks:(sub.blocks||[]).map(function(k){return{d:+k.d,s:k.s||"",e:k.e||""}})};
-    openPanel('editsched', {
-      title:'Horario de '+(sub.name||'la materia'),
-      description:'Elige los días y las horas de clase. Al guardar se actualiza el horario.',
-      body:scheduleEditor(editDraft), confirm:'Guardar'
-    });
-  }
-  function activeDraft(){
-    if(ui.dialogMode==='addsched')return addDraft;
-    if(ui.dialogMode==='editsched')return editDraft;
+
+  function activeDraft(target){
+    if (ui.dialogMode === 'addsched') return addDraft;
+    if (ui.dialogMode === 'horlist') return editDrafts.get(target.closest('[data-hl-subject]')?.dataset.hlSubject);
     return null;
   }
   function scheduleEditor(draft){
@@ -1626,23 +1873,36 @@ function createSchedule({ state, ui, save, render, find, limitLine, openPanel, c
         <label>Materia<input id="asName" list="asNames" autocomplete="off" spellcheck="false" placeholder="Ej. Cálculo" value="${esc(draft.name)}"></label>
         <datalist id="asNames">${subjectNames().map(name => `<option value="${esc(name)}"></option>`).join('')}</datalist>
         ${fields}
-        <div class="addsched-actions"><button type="button" class="ghost" data-add-another>Guardar y agregar otra materia</button></div>
       </div>` : fields;
   }
   function applyEditSched(){
-    var sub=find(editSubId);if(!sub||!editDraft)return;
-    var ds=editDraft.days.slice();
-    sub.days=ds;
-    sub.blocks=editDraft.blocks.filter(function(b){return ds.indexOf(b.d)>=0}).map(function(b){return{d:b.d,s:b.s,e:b.e}});
-    save();render();openHorList();
+    for (const draft of editDrafts.values()) {
+      if (draft.nameChanged && !draft.name.trim()) {
+        $('dmsg').textContent = 'Escribe el nombre de la materia.';
+        return;
+      }
+    }
+    for (const [id, draft] of editDrafts) {
+      const subject = find(id);
+      if (!subject) continue;
+      if (draft.nameChanged) subject.name = draft.name.trim();
+      if (!draft.changed) continue;
+      subject.days = draft.days.slice();
+      subject.blocks = draft.blocks.filter(block => draft.days.includes(block.d))
+        .map(block => ({d:block.d, s:tm(block.s), e:tm(block.e)}));
+    }
+    save();
+    render();
+    closeDlg();
+    setSch('Horario guardado.');
   }
   function openAddSched(fromList){
     addReturnToList=!!fromList;
     addDraft={name:"",days:[],blocks:[]};
     openPanel('addsched', {
-      title:'Agregar horario a mano',
-      description:'Escribe la materia y elige los días y horas. Si ya existe una materia con ese nombre, se actualiza su horario; si no, se crea con este horario.',
-      body:scheduleEditor(addDraft), confirm:'Guardar horario'
+      title:'Añadir materia',
+      description:'Escribe el nombre de la materia. Puedes añadir el horario ahora o más adelante.',
+      body:scheduleEditor(addDraft), confirm:'Añadir materia'
     });
     var name=$("asName");if(name)name.focus();
   }
@@ -1659,34 +1919,31 @@ function createSchedule({ state, ui, save, render, find, limitLine, openPanel, c
       draft.days.push(day);
       draft.blocks.push({d:day,s:'',e:''});
     }
-    $('dtab').innerHTML=scheduleEditor(draft);
   }
-  function saveAddSched(reopen){
+  function applyAddSched(){
     if(!addDraft)return;
     syncAddName();
     var name=String(addDraft.name||"").trim();
     if(!name){$("dmsg").textContent="Escribe el nombre de la materia.";return}
     var days=addDraft.days.slice();
-    if(!days.length){$("dmsg").textContent="Elige al menos un día de clase.";return}
     var blocks=addDraft.blocks.filter(function(b){return days.indexOf(b.d)>=0}).map(function(b){return{d:b.d,s:tm(b.s),e:tm(b.e)}});
     var match=exactSubject(name);
+    if(match && !days.length){
+      $("dmsg").textContent="Ya existe una materia con ese nombre.";
+      return;
+    }
     if(match){match.days=days;match.blocks=blocks}
     else state.subjects.push(createScheduledSubject({name,days,blocks}));
     addDraft=null;save();ui.anim.flip=true;render();
-    if(reopen){
-      openAddSched(false);
-      $("dmsg").textContent="Materia guardada. Puedes agregar otra.";
-      setSch("Horario guardado.");
-    }else if(addReturnToList){
+    if(addReturnToList){
       addReturnToList=false;
-      openHorList();
-      setSch("Horario guardado.");
+      openHorList(false);
+      setSch(days.length ? "Horario guardado." : "Materia añadida.");
     }else{
       closeDlg();
-      setSch("Horario guardado.");
+      setSch(days.length ? "Horario guardado." : "Materia añadida.");
     }
   }
-  function applyAddSched(){saveAddSched(false)}
   $("dtab").addEventListener("click",function(e){
     if(ui.dialogMode==="ai"){
       if(e.target.closest("[data-ai-test]")){testAI();return}
@@ -1695,36 +1952,63 @@ function createSchedule({ state, ui, save, render, find, limitLine, openPanel, c
     }
     if(ui.dialogMode==="horlist"){
       if(e.target.closest("[data-hl-new]")){openAddSched(true);return}
-      var eb=e.target.closest("[data-hl-edit]");
-      if(eb){openSchedEdit(find(eb.dataset.hlEdit));return}
       var cb=e.target.closest("[data-hl-delete]");
       if(cb){
         var cs=find(cb.dataset.hlDelete);if(!cs)return;
         if(!cb.dataset.arm){
-          cb.dataset.arm="1";cb.textContent="Toca otra vez para eliminar de todas partes";
-          cb.style.color="var(--bad-ink)";cb.style.borderColor="var(--bad-ink)";
-          setTimeout(function(){if(cb.isConnected){delete cb.dataset.arm;cb.textContent="Eliminar materia";cb.style.color="";cb.style.borderColor=""}},3000);
+          const confirmation = 'Toca la papelera otra vez para eliminar la materia.';
+          cb.dataset.arm = '1';
+          cb.setAttribute('aria-label','Confirmar eliminación de materia');
+          cb.title = 'Confirmar eliminación';
+          $('dmsg').textContent = confirmation;
+          setTimeout(() => {
+            if (!cb.isConnected) return;
+            delete cb.dataset.arm;
+            cb.setAttribute('aria-label','Eliminar materia');
+            cb.title = 'Eliminar materia';
+            if ($('dmsg').textContent === confirmation) $('dmsg').textContent = '';
+          }, 3000);
           return;
         }
         removeSubject(cs.id);
-        if(editSubId===cs.id){editSubId=null;editDraft=null}
-        render();openHorList();
+        editDrafts.delete(cs.id);
+        render();openHorList(false);
+        return;
       }
-      return;
     }
-    if(ui.dialogMode==="addsched"&&e.target.closest("[data-add-another]")){saveAddSched(true);return}
-    const draft = activeDraft();
+    const draft = activeDraft(e.target);
     const day = e.target.closest("[data-eday]");
-    if(draft && day)toggleDay(draft, Number(day.dataset.eday));
+    if (!draft || !day) return;
+    const fields = ui.dialogMode === 'horlist'
+      ? day.closest('[data-hl-subject]').querySelector('[data-hl-fields]')
+      : $('dtab');
+    toggleDay(draft, Number(day.dataset.eday));
+    draft.changed = true;
+    fields.innerHTML = scheduleEditor(draft);
+    fields.querySelector('[data-eday="'+day.dataset.eday+'"]')?.focus();
   });
   $("dtab").addEventListener("change",function(e){
     var el=e.target;
     if(ui.dialogMode==="ai"&&el.id==="aiProvider"){applyAIProvider(el.value);return}
-    const block = activeDraft()?.blocks[el.dataset?.block];
-    if(block)block[el.dataset.time]=el.value;
+    if (el.dataset?.block == null) return;
+    const draft = activeDraft(el);
+    const block = draft?.blocks[el.dataset.block];
+    if (block) {
+      block[el.dataset.time] = el.value;
+      draft.changed = true;
+    }
   });
   $("dtab").addEventListener("input",function(e){
-    if(ui.dialogMode==="addsched"&&e.target&&e.target.id==="asName"&&addDraft)addDraft.name=e.target.value;
+    const field = e.target;
+    if (ui.dialogMode === 'addsched' && field.id === 'asName' && addDraft) addDraft.name = field.value;
+    if (ui.dialogMode === 'horlist' && field.dataset?.hlName !== undefined) {
+      const draft = activeDraft(field);
+      if (draft) {
+        draft.name = field.value;
+        draft.nameChanged = true;
+        $('dmsg').textContent = '';
+      }
+    }
   });
 
   /* conexión con una API de IA */
@@ -1752,8 +2036,7 @@ function createSchedule({ state, ui, save, render, find, limitLine, openPanel, c
       remember:remember?!!remember.checked:true
     };
   }
-  function openAIConfig(fromUpload){
-    aiPendingUpload=!!fromUpload;
+  function openAIConfig(){
     var cfg=loadAIConfig();
     const body='<div class="dsform">'+
       '<label>Proveedor<select id="aiProvider">'+providerOptions(cfg.provider)+'</select></label>'+
@@ -1779,9 +2062,7 @@ function createSchedule({ state, ui, save, render, find, limitLine, openPanel, c
       return;
     }
     cfg=saveAIConfig(cfg);
-    var photo=aiPendingUpload;aiPendingUpload=false;
-    closeDlg();setSch(photo?"IA conectada. Elige la foto de tu horario.":"Conexión de IA guardada.");render();
-    if(photo)$("schfile").click();
+    closeDlg();setSch("Conexión de IA guardada.");render();
   }
   function testAI(){
     var cfg=aiFormConfig();
@@ -1801,13 +2082,6 @@ function createSchedule({ state, ui, save, render, find, limitLine, openPanel, c
     setSch("Conexión de IA eliminada.");
     render();
   }
-  function requestSchedulePhoto(){
-    if(isAIConfigured()||(window.claude&&window.claude.use)){$("schfile").click();return}
-    setSch("Conecta una API de IA para leer la foto del horario.");
-    openAIConfig(true);
-  }
-
-  /* horario con foto + IA */
   function norm(t){return String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9 ]/g,"").trim()}
   function matchSubject(n){
     var q=norm(n),best=null;
@@ -1824,30 +2098,6 @@ function createSchedule({ state, ui, save, render, find, limitLine, openPanel, c
   }
   function subjectNames(){
     return state.subjects.filter(function(x){return !x.archived&&x.name}).map(function(x){return x.name});
-  }
-  function readSchedule(file){
-    if(isAIConfigured()){
-      setSch("Leyendo tu horario con IA…");
-      readScheduleImage(file,loadAIConfig(),buildSchedulePrompt(subjectNames())).then(showSched).catch(function(e){
-        setSch((e&&e.message)||"No pude leer el horario. Prueba con una foto más clara.");
-      });
-      return;
-    }
-    if(!window.claude||!window.claude.use){
-      setSch("Conecta una API de IA para leer la foto del horario.");
-      openAIConfig(true);
-      return;
-    }
-    setSch("Leyendo tu horario…");
-    claude.use("sample").then(function(sample){
-      if(!sample)throw{code:"na"};
-      return sample.limits().then(function(l){
-        if(!l||!l.images)throw{code:"na"};
-        return sample.json(buildSchedulePrompt(subjectNames()),{images:file,modelTier:"default"});
-      });
-    }).then(showSched).catch(function(e){
-      setSch(e&&e.code==="not_granted"?"No diste permiso para leer la imagen.":"No pude leer el horario. Prueba con una foto más clara.");
-    });
   }
   function schedTable(items){
     var placed=[],loose=[],mn=1440,mx=0;
@@ -1906,11 +2156,10 @@ function createSchedule({ state, ui, save, render, find, limitLine, openPanel, c
     });
     pendingSched=null;scheduleReview=null;save();ui.anim.flip=true;render();closeDlg();setSch("Horario guardado.");
   }
-  $("schfile").addEventListener("change",function(){var f=this.files&&this.files[0];this.value="";if(f)readSchedule(f)});
 
 function setSch(t){ui.scheduleMessage=t;var el=$("schmsg");if(el)el.textContent=t}
 
-  return { showSched, openHorList, applyEditSched, openAddSched, applyAddSched, applySched, schedTable, stateRows, requestSchedulePhoto, openAIConfig, applyAIConfig };
+  return { showSched, openHorList, applyEditSched, openAddSched, applyAddSched, applySched, schedTable, stateRows, openAIConfig, applyAIConfig };
 }
 
 return { createSchedule };
@@ -1941,7 +2190,7 @@ function createOnboarding({ state, ui, save, render, schedTable, openAddSched, r
     const el = $('obStatusMsg');
     if (!el) return;
     el.textContent = text || '';
-    el.className = 'api-only m' + (type ? ' ' + type : '');
+    el.className = 'api-only grades-ai-status' + (type ? ' ' + type : '');
   }
 
   function resetFileSelection() {
@@ -1960,7 +2209,7 @@ function createOnboarding({ state, ui, save, render, schedTable, openAddSched, r
 
   function handleFile(file) {
     if (!file) return;
-    if (file.type && !file.type.startsWith('image/')) {
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) {
       setStatusMsg('Por favor selecciona un archivo de imagen compatible (JPG, PNG o WebP).', 'warn');
       return;
     }
@@ -2011,29 +2260,17 @@ function createOnboarding({ state, ui, save, render, schedTable, openAddSched, r
   const dropzone = $('obDropzone');
   const fileInput = $('obFile');
   if (dropzone && fileInput) {
-    dropzone.addEventListener('click', function (e) {
-      if (e.target.closest('#obChangePhoto')) {
-        fileInput.click();
-        return;
-      }
-      fileInput.click();
-    });
-    dropzone.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        fileInput.click();
-      }
-    });
+    dropzone.addEventListener('click', () => fileInput.click());
     dropzone.addEventListener('dragover', function (e) {
       e.preventDefault();
-      dropzone.classList.add('dragover');
+      dropzone.classList.add('dragging');
     });
     dropzone.addEventListener('dragleave', function () {
-      dropzone.classList.remove('dragover');
+      dropzone.classList.remove('dragging');
     });
     dropzone.addEventListener('drop', function (e) {
       e.preventDefault();
-      dropzone.classList.remove('dragover');
+      dropzone.classList.remove('dragging');
       const files = e.dataTransfer && e.dataTransfer.files;
       if (files && files.length) handleFile(files[0]);
     });
@@ -2043,13 +2280,7 @@ function createOnboarding({ state, ui, save, render, schedTable, openAddSched, r
     });
   }
 
-  const changePhotoBtn = $('obChangePhoto');
-  if (changePhotoBtn && fileInput) {
-    changePhotoBtn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      fileInput.click();
-    });
-  }
+  $('obClose').addEventListener('click', closeOnboarding);
 
   const adjustButton = $('obAdjustAI');
   adjustButton.addEventListener('click', () => {
@@ -2665,118 +2896,17 @@ function createQrTransfer({ state, ui, openPanel, restoreSnapshot }) {
 return { createQrTransfer };
 })();
 
-// src/services/sync.js
-modules["src/services/sync.js"] = (() => {
-const { initializeSemesters, commitSemester } = modules["src/core/store.js"];
-
-const { KEY } = modules["src/core/constants.js"];
-
-const { subjectSnapshot } = modules["src/domain/subjects.js"];
-
-/** Sincronización opcional: prevalece la copia con updatedAt más reciente.
- * La app continúa localmente cuando el SDK no existe o la cuenta no está disponible.
- */
-function createSync({ state, ui, render, refreshSemesters }) {
-  const $ = id => document.getElementById(id);
-  var sync = { ref: null, timer: null };
-  function setSync(t, c) {
-    var el = $('sync');
-    if (!el) return;
-    el.hidden = !t;
-    el.textContent = t || '';
-    el.className = 'sync ' + (c || '');
-  }
-  function pushNow() {
-    if (!sync.ref) return;
-    sync.ref.set({ json: JSON.stringify(subjectSnapshot(state)), updatedAt: state.updatedAt }).then(
-      function () { setSync('Sincronizado con tu cuenta', 'ok'); },
-      function () { setSync('No se pudo sincronizar. Guardado solo en este dispositivo.', 'warn'); }
-    );
-  }
-  function schedulePush() {
-    if (!sync.ref) return;
-    clearTimeout(sync.timer);
-    setSync('Sincronizando…');
-    sync.timer = setTimeout(pushNow, 900);
-  }
-  function localOnly() {
-    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
-  }
-  function pull(first) {
-    if (!sync.ref) return Promise.resolve();
-    return sync.ref.get().then(function (snap) {
-      var d = snap.exists ? snap.data() : null, r = null;
-      if (d && d.json) { try { r = JSON.parse(d.json); } catch (e) {} }
-      var rt = (d && d.updatedAt) || 0, lt = state.updatedAt || 0;
-      if (r && Array.isArray(r.subjects)) {
-        if (!lt && state.subjects.length) {
-          state.subjects = r.subjects.concat(state.subjects);
-          state.absences = (Array.isArray(r.absences) ? r.absences : []).concat(state.absences);
-          if (r.sem && !state.sem.start && !state.sem.end && !state.sem.pct) state.sem = r.sem;
-          state.updatedAt = Date.now();
-          localOnly();
-          ui.anim.flip = true;
-          render();
-          refreshSemesters();
-          pushNow();
-          return;
-        }
-        if (rt > lt) {
-          var ae = document.activeElement;
-          if (!first && ae && /INPUT|TEXTAREA/.test(ae.tagName)) return;
-          state.subjects = r.subjects;
-          state.absences = Array.isArray(r.absences) ? r.absences : [];
-          if (r.sem) state.sem = r.sem;
-          state.absencePct=r.absencePct??r.sem?.pct??'';
-          if (r.gradeScale) state.gradeScale = r.gradeScale;
-          if(r.semesters){state.semesters=r.semesters;state.activeSemesterId=r.activeSemesterId;initializeSemesters()}else{commitSemester()}
-          state.updatedAt = rt;
-          localOnly();
-          ui.anim.flip = true;
-          render();
-          refreshSemesters();
-        } else if (rt < lt) {
-          pushNow();
-          return;
-        }
-        setSync('Sincronizado con tu cuenta', 'ok');
-      } else if (state.subjects.length) {
-        if (!state.updatedAt) { state.updatedAt = Date.now(); localOnly(); }
-        pushNow();
-      } else setSync('Sincronizado con tu cuenta', 'ok');
-    }).catch(function () {
-      setSync('No se pudo sincronizar. Guardado solo en este dispositivo.', 'warn');
-    });
-  }
-  function initSync() {
-    if (!window.claude || !window.claude.use) return;
-    Promise.all([claude.use('user'), claude.use('db')]).then(function (r) {
-      if (!r[0] || !r[1]) { setSync('Solo en este dispositivo', ''); return; }
-      return r[0].id().then(function (id) {
-        if (!id) { setSync('Solo en este dispositivo', ''); return; }
-        sync.ref = r[1].doc('data/users/' + id + '/state');
-        setSync('Sincronizando…');
-        return pull(true);
-      });
-    }).catch(function () { setSync('Solo en este dispositivo', ''); });
-  }
-  document.addEventListener('visibilitychange', function () {
-    if (!document.hidden && sync.ref) pull(false);
-  });
-
-  return { initSync, schedulePush };
-}
-
-return { createSync };
-})();
-
 // src/app.js
 modules["src/app.js"] = (() => {
+const { createInstallApp } = modules["src/features/install.js"];
+
 const { createCurriculumImport } = modules["src/features/curriculum-import.js"];
 
 const { createGradeImport } = modules["src/features/grade-import.js"];
 
 const { exportScheduleImage } = modules["src/features/schedule-image.js"];
+
+const { createCustomAppearance, customThemesKey, customFontsKey, customContrast, customThemeStyle, normalizeCustomTheme, themeColors, themeEditorHtml, themeFromPage } = modules["src/features/custom-appearance.js"];
 
 const { searchSubjects } = modules["src/domain/search.js"];
 
@@ -2784,11 +2914,11 @@ const { createSubjectsView } = modules["src/ui/subjects-view.js"];
 
 const { createMotion } = modules["src/ui/motion.js"];
 
-const { state, save, find, onSave, removeSubject, removeSemester, addSemester, switchSemester, initializeSemesters, commitSemester, importCurriculum } = modules["src/core/store.js"];
+const { state, save, find, removeSubject, removeSemester, addSemester, switchSemester, initializeSemesters, commitSemester, importCurriculum } = modules["src/core/store.js"];
 
 const { uid, num, f, esc } = modules["src/core/utils.js"];
 
-const { DIAS, MESES, ONBOARD_KEY } = modules["src/core/constants.js"];
+const { DIAS, MESES, KEY, ONBOARD_KEY, AI_KEY, LEGACY_DS_KEY } = modules["src/core/constants.js"];
 
 const { classCount: countClasses, allowed: allowedAbsences } = modules["src/domain/attendance.js"];
 
@@ -2801,8 +2931,6 @@ const { createOnboarding } = modules["src/features/onboarding.js"];
 const { createQrTransfer } = modules["src/features/qr-transfer.js"];
 
 const { isAIConfigured, saveAIConfig, clearAIConfig } = modules["src/services/ai.js"];
-
-const { createSync } = modules["src/services/sync.js"];
 
 // Estado efímero de interfaz; los datos persistentes pertenecen a core/store.js.
 const ui = { anim: {}, dialogMode: '', scheduleMessage: '', reorderId: null, archOpen: false };
@@ -2820,6 +2948,16 @@ const themes = [
   ['amber', 'Ámbar del desierto']
 ];
 const themeKey = 'cuentas-claras-theme';
+const previousThemeKey = ['nota', 'clara', 'theme'].join('-');
+const contrastKey = 'cuentas-claras-high-contrast';
+const radiusKey = 'cuentas-claras-radius';
+let cornerRadius = 20;
+function applyRadius(value){
+  cornerRadius = Math.max(0, Math.min(48, Math.round(Number(value))));
+  document.documentElement.style.setProperty('--custom-radius', cornerRadius + 'px');
+  document.documentElement.style.setProperty('--schedule-radius', Math.min(6, cornerRadius / 2) + 'px');
+}
+let highContrast = false;
 let currentTheme = 'default';
 const typefaces = [
   ['atkinson', 'Atkinson Hyperlegible Next (predeterminada)'],
@@ -2836,6 +2974,8 @@ const typefaces = [
 const typefaceKey = 'cuentas-claras-typeface';
 const defaultTypeface = 'atkinson';
 let currentTypeface = defaultTypeface;
+const customAppearance = createCustomAppearance();
+let editingThemeId;
 const classCount = sub => countClasses(sub, state.sem);
 const allowed = sub => allowedAbsences(sub, state.sem);
 
@@ -2879,10 +3019,15 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     if(a==="searchSubjects"){openSearch();return}
     if(a==="searchResult"){openSearchResult(b.dataset.semester,b.dataset.subject);return}
     if(a==="gradeSettings"){openGradeSettings();return}
+    if(a==="installApp"){rememberGradeSettings();openInstall();return}
     if(a==="typography"){openTypography();return}
+    if(a==="importWebFont"&&ui.dialogMode==='typography'){importCustomFont($('webFontUrl'));return}
     if(a==="selectTypeface"&&ui.dialogMode==='typography'){selectTypeface(b.dataset.typefaceOption);return}
+    if(a==="removeCustomFont"&&ui.dialogMode==='typography'){removeCustomFont(b.dataset.font);return}
     if(a==="themes"){openThemes();return}
     if(a==="selectTheme"&&ui.dialogMode==='themes'){selectTheme(b.dataset.theme);return}
+    if(a==="editCustomTheme"&&ui.dialogMode==='themes'){openThemeEditor(b.dataset.themeId);return}
+    if(a==="removeCustomTheme"&&ui.dialogMode==='customTheme'){removeCustomTheme();return}
     if(a==="export"){openDlg("export");return}
     if(a==="import"){openDlg("import");return}
     if(a==="wipeAll"){openWipe();return}
@@ -2923,6 +3068,7 @@ const allowed = sub => allowedAbsences(sub, state.sem);
   function $(id){return document.getElementById(id)}
   function openPanel(mode, {title, description='', body='', confirm='', dismiss='Cerrar', danger=false}){
     ui.dialogMode=mode;
+    $('dlg').dataset.panel = mode;
     $('dt').textContent=title;
     $('dp').textContent=description;
     $('dta').hidden=true;
@@ -3013,11 +3159,11 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     return `<svg class="settings-icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
   }
   const downloadIcon='M12 3v12m-5-5 5 5 5-5M5 16v4h14v-4';
-  function settingsOptions(actions){
-    return `<div class="settings-options">${actions.map(([action, label, icon]) => `
+  function settingsOptions(actions, extra='', first=''){
+    return `<div class="settings-options">${first}${actions.map(([action, label, icon]) => `
       <button type="button" class="settings-option${action==='wipeAll'?' settings-delete':''}" data-act="${action}">
         ${settingsIcon(icon)}<span>${label}</span><span aria-hidden="true">›</span>
-      </button>`).join('')}</div>`;
+      </button>`).join('')}${extra}</div>`;
   }
   function openGradeSettings(draft){
     const { min, max, absencePct } = draft ?? { ...state.gradeScale, absencePct: state.absencePct };
@@ -3036,7 +3182,12 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     </section>
     <section aria-labelledby="settingsAppearanceTitle">
     <h3 id="settingsAppearanceTitle">${settingsIcon('M5 6h14v10H5zm3 14h8m-4-4v4')}Apariencia</h3>
-    ${settingsOptions([['themes', 'Temas', 'M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-4 1.5 1.5 0 0 1 1-2.5h2A4 4 0 0 0 21 10c-1-4-5-7-9-7zM7 10h.01M10 7h.01M14 7h.01M17 10h.01'], ['typography', 'Tipografía', 'M4 19 10 5l6 14m-10-4h8m3 4 3-8 3 8m-5-2h4']])}
+    ${settingsOptions([['themes', 'Temas', 'M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-4 1.5 1.5 0 0 1 1-2.5h2A4 4 0 0 0 21 10c-1-4-5-7-9-7zM7 10h.01M10 7h.01M14 7h.01M17 10h.01'], ['typography', 'Tipografía', 'M4 19 10 5l6 14m-10-4h8m3 4 3-8 3 8m-5-2h4']], `<label class="settings-option contrast-option">
+      ${settingsIcon('M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 0v18m0-5 7-7m-7 3 5-5')}
+      <span>Alto contraste</span>
+      <input id="contrastSwitch" type="checkbox" role="switch"${isHighContrast() ? ' checked' : ''}>
+      <span class="settings-switch" aria-hidden="true"></span>
+    </label>`, `<label class="settings-option settings-radius-control" for="settingsRadius"><span>Redondeo <output id="settingsRadiusValue" for="settingsRadius">${cornerRadius} px</output></span><input id="settingsRadius" type="range" min="0" max="48" step="1" value="${cornerRadius}"></label>`)}
     </section>
     <section aria-labelledby="settingsAITitle">
     <h3 id="settingsAITitle">${settingsIcon('M12 3l2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4z')}Inteligencia artificial</h3>
@@ -3046,6 +3197,10 @@ const allowed = sub => allowedAbsences(sub, state.sem);
       ['uploadScheduleAI', 'Subir horario con IA', 'M4 8h16v12H4zM8 8V4m8 4V4m-7 9h6m-6 3h3'],
       ['aiConfig', isAIConfigured() ? 'Gestionar API de IA' : 'Conectar API de IA', 'M8 3v5m8-5v5M6 8h12v3a6 6 0 0 1-12 0zm6 9v4']
     ])}
+    </section>
+    <section aria-labelledby="settingsAppTitle">
+    <h3 id="settingsAppTitle">${settingsIcon('M6 3h12v18H6zM11 17h2')}Aplicación</h3>
+    ${settingsOptions([['installApp', 'Instalar como app', 'M5 3h14v18H5zM12 7v8m-3-3 3 3 3-3']])}
     </section>
     <section aria-labelledby="settingsDataTitle">
     <h3 id="settingsDataTitle">${settingsIcon('M4 7h16v13H4zM3 4h18v3H3zm7 7h4')}Datos</h3>
@@ -3071,20 +3226,55 @@ const allowed = sub => allowedAbsences(sub, state.sem);
   function rememberGradeSettings(){
     gradeSettingsDraft = { min: $('globalMin').value, max: $('globalMax').value, absencePct: $('globalAbsencePct').value };
   }
-  function applyTheme(theme){
-    currentTheme=themes.some(([id])=>id===theme)?theme:'default';
-    document.documentElement.dataset.theme=currentTheme;
+  function applyContrast(enabled){
+    highContrast = enabled;
+    applyTheme(currentTheme);
+  }
+  function isHighContrast(){
+    return customContrast(customAppearance.themes.find(theme => theme.id === currentTheme), highContrast);
+  }
+  document.addEventListener('change', event => {
+    const field = event.target;
+    if (field.id === 'customFontFile' && ui.dialogMode === 'typography') { importCustomFont(field); return; }
+    if (field.id !== 'contrastSwitch' || ui.dialogMode !== 'gradeSettings') return;
+    const theme = customAppearance.themes.find(item => item.id === currentTheme);
+    if (theme && theme.contrast !== 'system') {
+      try { customAppearance.saveTheme({...theme, contrast:field.checked ? 'high' : 'normal'}); }
+      catch { field.checked = isHighContrast(); $('dmsg').textContent = 'No se pudo guardar el contraste.'; return; }
+      applyTheme(currentTheme);
+    } else {
+      applyContrast(field.checked);
+      try { localStorage.setItem(contrastKey, String(highContrast)); } catch {}
+    }
+  });
+  function updateThemeColor(){
     const meta=document.querySelector('meta[name="theme-color"]');
     if(meta)meta.content=getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
   }
-  function openThemes(){
-    rememberGradeSettings();
-    const options=themes.map(([id,label])=>`
+  function applyTheme(theme){
+    const custom = customAppearance.themes.find(item => item.id === theme);
+    currentTheme = (custom || themes.some(([id]) => id === theme)) ? theme : 'default';
+    const root = document.documentElement;
+    const contrast = customContrast(custom, highContrast);
+    customThemeStyle(root, custom, contrast);
+    root.dataset.theme = custom ? 'custom' : currentTheme;
+    root.dataset.contrast = contrast ? 'high' : 'normal';
+    updateThemeColor();
+  }
+  function openThemes(fromSettings = true){
+    if (fromSettings) rememberGradeSettings();
+    const options=[...themes, ...customAppearance.themes.map(theme => [theme.id, theme.name, theme])].map(([id,label,custom])=>{
+      const preview = custom ? `style="--bg:${custom.background};--surface3:${custom.surface};--accent:${custom.accent}"` : `data-theme-preview="${id}"`;
+      const select = `
       <button type="button" class="settings-option theme-option" data-act="selectTheme" data-theme="${id}" aria-pressed="${id===currentTheme}">
-        <span class="theme-preview" data-theme-preview="${id}" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span>${label}</span><span class="theme-check" aria-hidden="true">✓</span>
-      </button>`).join('');
-    openPanel('themes', {title:'Temas', body:`<div class="settings-options">${options}</div>`, dismiss:'Volver'});
+        <span class="theme-preview" ${preview} aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>${esc(label)}</span><span class="theme-check" aria-hidden="true">✓</span>
+      </button>`;
+      return custom ? `<div class="appearance-option-row">${select}<button type="button" class="ghost" data-act="editCustomTheme" data-theme-id="${id}" aria-label="Editar ${esc(label)}">Editar</button></div>` : select;
+    }).join('');
+    openPanel('themes', {title:'Temas', body:`<div class="appearance-options">
+      <button type="button" class="p" data-act="editCustomTheme">Crear tema</button><div class="settings-options">${options}</div>
+    </div>`, dismiss:'Volver'});
     $('dtab').querySelector('[aria-pressed="true"]')?.focus();
   }
   function selectTheme(theme){
@@ -3094,18 +3284,79 @@ const allowed = sub => allowedAbsences(sub, state.sem);
       button.setAttribute('aria-pressed',String(button.dataset.theme===currentTheme));
     });
   }
-  function applyTypeface(id){
-    currentTypeface = typefaces.some(([key]) => key === id) ? id : defaultTypeface;
-    document.documentElement.dataset.typeface = currentTypeface;
+  function openThemeEditor(id){
+    const saved = customAppearance.themes.find(theme => theme.id === id);
+    const draft = saved || themeFromPage(document.documentElement);
+    editingThemeId = saved?.id;
+    openPanel('customTheme', {title:saved ? 'Editar tema' : 'Crear tema', body:themeEditorHtml(draft), confirm:'Guardar tema', dismiss:'Cancelar'});
+    customThemeStyle($('customThemeSample'), draft, customContrast(draft, highContrast));
+    $('customThemeName').focus();
   }
-  function openTypography(){
-    rememberGradeSettings();
-    const options = typefaces.map(([id,label]) => `
+  function readThemeEditor(){
+    return normalizeCustomTheme({
+      id: editingThemeId, name: $('customThemeName').value,
+      stroke: $('customStroke').value, contrast: $('customContrast').value,
+      ...Object.fromEntries(themeColors.map(([key]) => [key, $('customColor-' + key).value]))
+    });
+  }
+  document.addEventListener('input', event => {
+    if(event.target.id==='settingsRadius'){
+      applyRadius(event.target.value);
+      $('settingsRadiusValue').textContent = cornerRadius + ' px';
+      try { localStorage.setItem(radiusKey, String(cornerRadius)); } catch {}
+      return;
+    }
+    if (ui.dialogMode !== 'customTheme' || !event.target.id?.startsWith('custom')) return;
+    const draft = readThemeEditor();
+    customThemeStyle($('customThemeSample'), draft, customContrast(draft, highContrast));
+  });
+  function saveCustomTheme(){
+    const draft = readThemeEditor();
+    if (!draft.name) { $('dmsg').textContent = 'Escribe un nombre para el tema.'; $('customThemeName').focus(); return; }
+    let id;
+    try { id = customAppearance.saveTheme(draft); }
+    catch { $('dmsg').textContent = 'No se pudo guardar el tema en este navegador.'; return; }
+    selectTheme(id);
+    openThemes(false);
+  }
+  function removeCustomTheme(){
+    try { customAppearance.removeTheme(editingThemeId); }
+    catch { $('dmsg').textContent = 'No se pudo eliminar el tema.'; return; }
+    if (currentTheme === editingThemeId) selectTheme('default');
+    openThemes(false);
+  }
+  function applyTypeface(id){
+    const root = document.documentElement;
+    const font = customAppearance.fonts.find(item => item.id === id);
+    if (currentTypeface.startsWith('font-')) root.style.removeProperty('--ui-typeface');
+    currentTypeface = (font || typefaces.some(([key]) => key === id)) ? id : defaultTypeface;
+    root.dataset.typeface = currentTypeface;
+    if (!font) return;
+    root.style.setProperty('--ui-typeface', font.id);
+    customAppearance.loadFont(font).catch(() => {
+      if (currentTypeface !== id) return;
+      selectTypeface(defaultTypeface);
+      if (ui.dialogMode === 'typography') $('dmsg').textContent = 'No se pudo cargar esta fuente.';
+    });
+  }
+  function openTypography(fromSettings = true){
+    if (fromSettings) rememberGradeSettings();
+    const options = [...typefaces, ...customAppearance.fonts.map(font => [font.id, font.name, font])].map(([id,label,font]) => {
+      const select = `
       <button type="button" class="settings-option typeface-option" data-act="selectTypeface"
         data-typeface-option="${id}" aria-pressed="${id === currentTypeface}">
-        <span>${label}</span><span class="typeface-check" aria-hidden="true">✓</span>
-      </button>`).join('');
-    openPanel('typography', {title:'Tipografía', body:`<div class="settings-options">${options}</div>`, dismiss:'Volver'});
+        <span>${esc(label)}</span><span class="typeface-check" aria-hidden="true">✓</span>
+      </button>`;
+      return font ? `<div class="appearance-option-row">${select}<button type="button" class="ghost" data-act="removeCustomFont" data-font="${id}" aria-label="Quitar ${esc(label)}">Quitar</button></div>` : select;
+    }).join('');
+    openPanel('typography', {title:'Tipografía', body:`<div class="appearance-options">
+      <label class="appearance-field">Añadir tipografía <span class="m">WOFF2, WOFF, TTF u OTF</span>
+        <input type="file" id="customFontFile" accept=".woff2,.woff,.ttf,.otf">
+      </label><label class="appearance-field">Enlace directo al archivo de fuente
+        <input type="url" id="webFontUrl" placeholder="https://ejemplo.com/fuente.woff2">
+      </label><button type="button" data-act="importWebFont">Añadir desde la web</button>
+      <div class="settings-options">${options}</div>
+    </div>`, dismiss:'Volver'});
     $('dtab').querySelector('[aria-pressed="true"]')?.focus();
   }
   function selectTypeface(id){
@@ -3114,6 +3365,45 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     $('dtab').querySelectorAll('[data-act="selectTypeface"]').forEach(button => {
       button.setAttribute('aria-pressed', String(button.dataset.typefaceOption === currentTypeface));
     });
+  }
+  async function importCustomFont(input){
+    const web = input.id === 'webFontUrl';
+    if (input.disabled || (!web && !input.files[0])) return;
+    const isOpen = () => ui.dialogMode === 'typography' && $(web ? 'webFontUrl' : 'customFontFile') === input;
+    input.disabled = true;
+    $('dmsg').textContent = 'Cargando tipografía…';
+    try {
+      const file = web ? await fetchFontFile(input.value.trim()) : input.files[0];
+      const font = await customAppearance.readFont(file);
+      if (!isOpen()) return;
+      let id;
+      try { id = customAppearance.addFont(font); }
+      catch { throw new Error('No se pudo guardar la fuente. Comprueba el espacio disponible en el navegador.'); }
+      selectTypeface(id);
+      openTypography(false);
+    } catch (error) {
+      if (isOpen()) $('dmsg').textContent = error.message;
+    } finally {
+      if (!web) input.value = '';
+      input.disabled = false;
+    }
+  }
+  async function fetchFontFile(value){
+    let url;
+    try { url = new URL(value); } catch {}
+    if (url?.protocol !== 'https:') throw new Error('Introduce un enlace HTTPS al archivo de fuente.');
+    let response;
+    try { response = await fetch(url, {credentials:'omit',referrerPolicy:'no-referrer'}); } catch {}
+    if (!response?.ok) throw new Error('No se pudo descargar la fuente. Comprueba que el enlace sea público y permita descargas desde esta página.');
+    const blob = await response.blob();
+    const name = url.pathname.split('/').pop() || 'Fuente web';
+    return new File([blob], /\.(woff2?|ttf|otf)$/i.test(name) ? name : name + '.woff2');
+  }
+  function removeCustomFont(id){
+    try { customAppearance.removeFont(id); }
+    catch { $('dmsg').textContent = 'No se pudo quitar la fuente.'; return; }
+    if (currentTypeface === id) selectTypeface(defaultTypeface);
+    openTypography(false);
   }
   function returnToGradeSettings(){
     const draft = gradeSettingsDraft;
@@ -3194,24 +3484,94 @@ const allowed = sub => allowedAbsences(sub, state.sem);
   });
 
   function openWipe(){
-    var n=state.semesters.reduce((n,x)=>n+x.subjects.length,0),a=state.semesters.reduce((n,x)=>n+x.absences.length,0);
-    $('dta').value='';
+    commitSemester();
+    const semesters = state.semesters;
+    const subjects = semesters.flatMap(semester => semester.subjects);
+    const scheduled = subjects.filter(subject => subject.days?.length).length;
+    const grades = subjects.reduce((total, subject) =>
+      total + subject.rows.filter(row => num(row.g) !== null).length, 0);
+    const absences = semesters.reduce((total, semester) => total + semester.absences.length, 0);
+    const quantity = (count, one, many) => count + ' ' + (count === 1 ? one : many);
+    $('dta').value = '';
     openPanel('wipe', {
       title:'Eliminar todos los datos',
-      description:'Se borrarán '+n+(n===1?' materia':' materias')+', '+a+(a===1?' falta':' faltas')+', el semestre y la conexión de IA de este navegador. Esta acción no se puede deshacer.',
-      confirm:'Eliminar todo', danger:true
+      description:'Se borrarán tus semestres y todas las preferencias que guarda Cuentas Claras. Esta acción no se puede deshacer.',
+      body:`<ul class="wipe-summary">
+        <li>${quantity(semesters.length, 'semestre', 'semestres')} con sus fechas.</li>
+        <li>${quantity(subjects.length, 'materia', 'materias')}, incluidas las archivadas, con sus créditos, porcentajes y predicciones.</li>
+        <li>${quantity(grades, 'nota registrada', 'notas registradas')}.</li>
+        <li>${quantity(scheduled, 'horario de materia', 'horarios de materias')} y ${quantity(absences, 'registro de faltas', 'registros de faltas')}.</li>
+        <li>La configuración de IA y sus claves guardadas, aunque sean solo de esta sesión.</li>
+        <li>Los temas y las tipografías, incluidos los personalizados, el alto contraste y los ajustes de notas y faltas.</li>
+      </ul>`,
+      confirm:'Eliminar todo', dismiss:'Cancelar', danger:true
     });
   }
+  let wipePending = false;
+  function clearAppStorage(){
+    const known = [KEY, ONBOARD_KEY, AI_KEY, LEGACY_DS_KEY, themeKey, previousThemeKey, typefaceKey, contrastKey, customThemesKey, customFontsKey];
+    for (const area of ['localStorage', 'sessionStorage']) {
+      const storage = globalThis[area];
+      if (!storage) continue;
+      const keys = new Set(known);
+      for (let i=0; i<storage.length; i++) {
+        const key = storage.key(i);
+        if (/^(calc-notas-|cuentas-claras-|nota-clara-)/.test(key)) keys.add(key);
+      }
+      for (const key of keys) storage.removeItem(key);
+    }
+  }
+  let resetChannel;
+  try {
+    if (window.BroadcastChannel) {
+      resetChannel = new window.BroadcastChannel('cuentas-claras-reset');
+      resetChannel.addEventListener('message', event => {
+        if (event.data !== 'clear') return;
+        clearAppStorage();
+        clearAIConfig();
+        window.location.reload();
+      });
+    }
+  } catch {}
   function applyWipeAll(){
-    state.subjects=[];state.absences=[];state.semesters=null;
-    state.sem={start:"",end:"",pct:""};state.gradeScale={min:3,max:5};state.absencePct='';
-    initializeSemesters();refreshSemesters();
-    clearAIConfig();
-    try{localStorage.removeItem(ONBOARD_KEY)}catch(e){}
-    Object.keys(open).forEach(function(k){delete open[k]});
-    Object.keys(open2).forEach(function(k){delete open2[k]});
-    ui.archOpen=false;ui.reorderId=null;ui.scheduleMessage="";open.faltas=false;
-    save();render();closeDlg();resetQr();
+    if (wipePending) return;
+    wipePending = true;
+    $('dgo').disabled = true;
+    $('dx').disabled = true;
+    $('dmsg').textContent = 'Borrando datos…';
+    try {
+      clearAppStorage();
+      clearAIConfig();
+      for (const key of Object.keys(state)) delete state[key];
+      Object.assign(state, {
+        subjects:[], absences:[], sem:{start:'',end:'',pct:''},
+        gradeScale:{min:3,max:5}, absencePct:''
+      });
+      initializeSemesters();
+      customAppearance.reset();
+      applyRadius(20);
+      applyContrast(false);
+      applyTheme('default');
+      applyTypeface(defaultTypeface);
+      gradeSettingsDraft = null;
+      for (const key of Object.keys(open)) delete open[key];
+      for (const key of Object.keys(open2)) delete open2[key];
+      ui.archOpen = false;
+      ui.reorderId = null;
+      ui.scheduleMessage = '';
+      refreshSemesters();
+      render();
+      resetQr();
+      closeDlg();
+      resetChannel?.postMessage('clear');
+      window.location?.reload();
+    } catch {
+      $('dmsg').textContent = 'No se pudo completar el borrado en este navegador. Inténtalo de nuevo.';
+    } finally {
+      wipePending = false;
+      $('dgo').disabled = false;
+      $('dx').disabled = false;
+    }
   }
   let returnFromAIConfig = null;
   function closeDlg(){
@@ -3233,8 +3593,9 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     save();refreshSemesters();ui.anim.flip=true;render();closeDlg();
   }
   function dismissDlg(){
-    if($('dlg').hidden)return;
-    if(ui.dialogMode==='scheduleExport'||ui.dialogMode==='themes'||ui.dialogMode==='typography')returnToGradeSettings();
+    if($('dlg').hidden || wipePending)return;
+    if(ui.dialogMode==='customTheme')return openThemes(false);
+    if(ui.dialogMode==='scheduleExport'||ui.dialogMode==='themes'||ui.dialogMode==='typography'||ui.dialogMode==='installApp')returnToGradeSettings();
     else closeDlg();
   }
   $("dx").addEventListener("click",dismissDlg);
@@ -3248,12 +3609,14 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     if(ui.dialogMode==="addSemester"||ui.dialogMode==="renameSemester"){applySemesterSettings();return}
     if(ui.dialogMode==="deleteSemester"){applyDeleteSemester();return}
     if(ui.dialogMode==="gradeSettings"){applyGradeSettings();return}
+    if(ui.dialogMode==="customTheme"){saveCustomTheme();return}
     if(ui.dialogMode==="scheduleExport"){downloadSettingsSchedule($('exportScheduleSemester').value);return}
     if(ui.dialogMode==="schedule"){applySched();return}
-    if(ui.dialogMode==="editsched"){applyEditSched();return}
+    if(ui.dialogMode==="horlist"){applyEditSched();return}
     if(ui.dialogMode==="addsched"){applyAddSched();return}
     if(ui.dialogMode==="ai"){applyAIConfig();return}
-    if(ui.dialogMode==="wipe"){applyWipeAll();return}
+    if(ui.dialogMode==="installApp"){install();return}
+    if(ui.dialogMode==="wipe")return applyWipeAll();
     if(ui.dialogMode==="qrreview"){applyImportReview();return}
     if(ui.dialogMode==="export"){
       ta.select();
@@ -3292,7 +3655,7 @@ const allowed = sub => allowedAbsences(sub, state.sem);
   }
   function attendanceHtml(){
     var hs=hasSchedule();
-    if(ui.attendanceView==='schedule')return '<section class="attendance-section"><div class="attendance-section-head"><h3>Horario semanal</h3><button class="ghost" data-act="editHorario">Editar horario</button></div>'+
+    if(ui.attendanceView==='schedule')return '<section class="attendance-section"><div class="attendance-section-head"><h3>Horario semanal</h3><button type="button" class="p schedule-edit-button" data-act="editHorario">'+settingsIcon('M4 15.5V20h4.5L20 8.5 15.5 4 4 15.5zM13.5 6l4.5 4.5')+'Editar horario</button></div>'+
       (hs?schedTable(stateRows()):'<div class="attendance-empty">Sin horario</div>')+
       '<div class="sch"><button data-act="exportScheduleImage">Descargar imagen</button></div><p class="m" id="schmsg" role="status">'+esc(ui.scheduleMessage||'')+'</p></section>';
     var h='<section class="attendance-section semester-dates-section">'+semBox()+'</section>'+
@@ -3336,10 +3699,6 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
     else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
   });
-  function limitLine(x){
-    var mx=allowed(x);if(mx===null)return "";
-    return '<p class="m hlim">Máx. '+mx+(mx===1?" falta":" faltas")+' de '+classCount(x)+' clases</p>';
-  }
   function semBox(){
     var m=state.sem;
     return '<details class="semester-date-details"><summary>'+esc(m.start&&m.end?m.start.split('-').reverse().join('/')+' – '+m.end.split('-').reverse().join('/'):'Fechas del semestre')+'</summary><div class="semg semester-dates"><label>Inicio<input type="date" aria-label="Inicio del semestre" data-sem="start" value="'+esc(m.start)+'"></label><label>Fin<input type="date" aria-label="Fin del semestre" data-sem="end" value="'+esc(m.end)+'"></label></div></details>';
@@ -3381,22 +3740,26 @@ const allowed = sub => allowedAbsences(sub, state.sem);
   $("cgrid").addEventListener("click",function(e){var b=e.target.closest("[data-date]");if(b)addFalta(b.dataset.date)});
   document.addEventListener("keydown",function(e){if(e.key==="Escape")closeCal()});
 
+  const {openInstall, install} = createInstallApp({
+    openPanel,
+    showMessage(message) { $('dmsg').textContent = message; },
+    isInstallOpen: () => ui.dialogMode === 'installApp'
+  });
   const { renderRaw, refreshCard } = createSubjectsView({ state, ui, open, open2, find, allowed, faltHtml, renderAttendance });
   const { render, shrink } = createMotion({ ui, renderRaw });
-  const { showSched, openHorList, applyEditSched, applySched, schedTable, stateRows, requestSchedulePhoto, openAddSched, applyAddSched, openAIConfig, applyAIConfig } =
-    createSchedule({ state, ui, save, render, find, limitLine, openPanel, closeDlg, removeSubject });
-  const { openCurriculum } = createCurriculumImport({state, importCurriculum, refreshSemesters, render, openAIConfig});
-  const { openGradeImport } = createGradeImport({ state, save, render, openAIConfig });
-  const { openOnboarding } = createOnboarding({ state, ui, save, render, schedTable, openAddSched, reviewExisting: showSched, adjustAI(resume) {
+  const { showSched, openHorList, applyEditSched, applySched, schedTable, stateRows, openAddSched, applyAddSched, openAIConfig, applyAIConfig } =
+    createSchedule({ state, ui, save, render, find, openPanel, closeDlg, removeSubject });
+  function adjustAI(resume) {
     returnFromAIConfig = resume;
-    openAIConfig(false);
-  } });
+    openAIConfig();
+  }
+  const { openCurriculum } = createCurriculumImport({state, importCurriculum, refreshSemesters, render, adjustAI});
+  const { openGradeImport } = createGradeImport({state, save, render, adjustAI});
+  const { openOnboarding } = createOnboarding({state, ui, save, render, schedTable, openAddSched, reviewExisting:showSched, adjustAI});
   const { applyImportReview, reset: resetQr } = createQrTransfer({ state, ui, openPanel, restoreSnapshot });
-  const { initSync, schedulePush } = createSync({ state, ui, render, refreshSemesters });
-  onSave(schedulePush);
+  try { applyContrast(localStorage.getItem(contrastKey) === 'true'); } catch { applyContrast(false); }
   try{
     // Conserva la preferencia guardada antes del cambio de marca.
-    const previousThemeKey = ['nota', 'clara', 'theme'].join('-');
     const savedTheme = localStorage.getItem(themeKey) || localStorage.getItem(previousThemeKey);
     applyTheme(savedTheme);
     if(savedTheme){
@@ -3404,8 +3767,15 @@ const allowed = sub => allowedAbsences(sub, state.sem);
       localStorage.removeItem(previousThemeKey);
     }
   }catch{applyTheme('default')}
+  try {
+    const stored = localStorage.getItem(radiusKey);
+    const legacy = customAppearance.themes.find(theme => theme.id === currentTheme)?.radius;
+    const radius = stored ?? legacy ?? 20;
+    applyRadius(Number.isFinite(Number(radius)) ? radius : 20);
+    if (stored === null && legacy != null) localStorage.setItem(radiusKey, String(cornerRadius));
+  } catch { applyRadius(20); }
   try { applyTypeface(localStorage.getItem(typefaceKey)); } catch { applyTypeface(defaultTypeface); }
-  refreshSemesters();ui.anim.first=true;render();initSync();
+  refreshSemesters();ui.anim.first=true;render();
 
 return {  };
 })();

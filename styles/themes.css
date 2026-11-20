@@ -75,3 +75,106 @@ button.theme-option>.theme-preview{flex:none}
 button.theme-option>.theme-check{visibility:hidden;color:var(--ink);font-size:1rem}
 .theme-option[aria-pressed="true"]{background:var(--surface3)}
 .theme-option[aria-pressed="true"] .theme-check{visibility:visible}
+
+/* High contrast keeps each theme's accent while clarifying surfaces and focus. */
+:root[data-theme]:not([data-theme="custom"])[data-contrast="high"]{
+  --bg:#050608;--surface:#161a21;--surface2:#202630;--surface3:#303948;
+  --ink:#fff;--muted:#e0e8f3;--line:#9daec6;--outline:#9daec6;--focus:#3d4d63;
+  --panel:var(--surface);--control:var(--surface3);--strong-surface:var(--focus);
+  --done:var(--surface3);--done-ink:var(--ink);--need:var(--surface2);--need-ink:var(--ink);--need-line:var(--outline);
+  --select:var(--surface3);--select-hover:var(--focus);--selected-ink:var(--ink);--input-inset:var(--bg);
+  --brand-ink:var(--ink);--accent-focus:var(--accent);
+  --ok:#12372a;--ok-ink:#ddffec;--bad:#451b24;--bad-ink:#ffe2e6;
+}
+:root[data-contrast="high"]:is([data-theme="rose"],[data-theme="white"],[data-theme="blue"],[data-theme="amber"]){
+  --bg:#fff;--surface:#edf2f9;--surface2:#e2eaf5;--surface3:#d2deee;
+  --ink:#0d1725;--muted:#25354b;--line:#536782;--outline:#536782;--focus:#becfe5;
+  --ok:#d6f1e4;--ok-ink:#17382b;--bad:#ffe1e7;--bad-ink:#661c33;
+}
+:root[data-theme][data-contrast="high"] :is(.attendance-entry,.attendance-dialog){
+  --att-surface:var(--surface2);--att-container:var(--surface3);--att-container-high:var(--focus);
+  --att-on-surface:var(--ink);--att-on-variant:var(--muted);--att-outline:var(--outline);
+  --att-primary:var(--accent);--att-on-primary:var(--accent-ink);
+}
+:root[data-contrast="high"]:not([data-theme="custom"]) :is(.card,.dbox,.attendance-box,.attendance-entry,.settings-options,.settings-option,
+  .srow,.personal-ai,.ai-upload,.curriculum-period,.ai-method,.schedule-review-item,
+  button:not(.p):not(.item),input:not([type="checkbox"]):not([type="radio"]),select,textarea){
+  outline:1px solid var(--outline);
+  outline-offset:-1px;
+}
+:root[data-contrast="high"] :is(button,input,select,textarea,summary,a,[role="button"]):focus-visible{
+  outline:2px solid currentColor;
+  outline-offset:-3px;
+}
+:root[data-contrast="high"] :is(input,textarea)::placeholder{color:var(--muted);opacity:1}
+
+:root[data-theme="custom"]{
+  color-scheme:var(--custom-scheme);
+  --bg:var(--custom-background);
+  --surface:var(--custom-surface);
+  --surface2:color-mix(in srgb,var(--surface) 94%,var(--custom-contrast-base));
+  --surface3:color-mix(in srgb,var(--surface) 88%,var(--custom-contrast-base));
+  --ink:var(--custom-text);
+  --muted:var(--custom-muted);
+  --accent:var(--custom-accent);
+  --accent-ink:var(--custom-accent-ink);
+  --outline:var(--custom-border);
+  --line:var(--custom-border);
+  --focus:var(--surface3);
+}
+:root[data-theme="custom"][data-contrast="high"]{--muted:var(--ink)}
+:root[data-theme="custom"] :is(.card,.row,.grpbody,.settings-options,.srow,.dbox,.attendance-box,.sg,.blk,
+  .ai-import-box,.ai-upload,.schedule-review-item,.curriculum-period,.frow,.summary-card,button,
+  input:not([type="checkbox"],[type="radio"]),select,textarea),
+:root[data-theme="custom"] .attendance-dialog:not(.absence-view) :is(.attendance-box,.blk){
+  border-radius:var(--custom-radius);
+  border:var(--custom-stroke) solid var(--custom-border);
+}
+:root[data-theme] :is(.card,.row,.grpbody,.settings-options,.srow,.dbox,.attendance-box,.sg,.blk,.ai-import-box,.ai-upload,.schedule-review-item,.curriculum-period,.frow,.summary-card,button,input:not([type="checkbox"],[type="radio"],[type="range"]),select,textarea,.settings-radius-control,.chip,.fbox,.dchip,.arch-h,.attendance-stat,.attendance-count,.attendance-cta,.attendance-entry,
+.attendance-section,.absence-view .attendance-box,.absence-view .absence-add,.attendance-dialog .attendance-section,
+.semester-bar,.empty,.icon,.item,.grp,.tools .p,.schedule-review-block input,.schedule-review-block select,
+.appearance-option-row,.appearance-colors label,.appearance-field input,.appearance-field select,.custom-theme-sample){
+  border-radius:var(--custom-radius) !important;
+}
+
+.appearance-options,.appearance-editor,.appearance-field{display:grid;gap:8px}
+.sg,.custom-theme-sample .sample-class{--custom-radius:var(--schedule-radius,6px)}
+.attendance-dialog:not(.absence-view) .sg-h{border-radius:var(--schedule-radius,6px) var(--schedule-radius,6px) 0 0}
+.settings-radius-control{display:grid;gap:8px;padding:10px 12px;border-radius:14px;background:var(--surface);font-size:.875rem}
+.settings-radius-control>span{display:flex;justify-content:space-between;align-items:center}
+.settings-radius-control output{color:var(--muted);font-variant-numeric:tabular-nums}
+.settings-radius-control input[type="range"]{appearance:auto;padding:0;border:0;min-height:24px;cursor:pointer;width:100%;margin:0;accent-color:var(--accent);}
+.appearance-options,.appearance-editor{gap:14px}
+.appearance-options>.p{justify-self:start}
+.appearance-field{min-width:0;font-size:.875rem}
+.appearance-field :is(input,select){
+  min-height:44px;width:100%;background:var(--surface3);color:var(--ink);border:0;
+  border-radius:12px;padding:8px 10px;font:inherit;
+}
+.appearance-field input[type="file"]{padding:10px}
+.appearance-field :is(input,select):focus-visible,.appearance-colors input:focus-visible{
+  outline:2px solid var(--ink);outline-offset:2px;
+}
+.appearance-option-row{display:flex;align-items:center;gap:4px;padding-right:6px}
+.appearance-option-row .settings-option{flex:1;min-width:0;overflow-wrap:anywhere}
+.appearance-option-row .ghost{flex:none;padding:8px 10px}
+.appearance-colors,.appearance-dimensions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.appearance-colors label{
+  display:flex;align-items:center;justify-content:space-between;gap:4px;
+  min-height:44px;padding:4px 8px;background:var(--surface3);border-radius:12px;font-size:.875rem;
+}
+.appearance-colors input{flex:none;width:34px;height:34px;border-radius:8px;padding:2px}
+.custom-theme-sample{
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;
+  background:var(--custom-background);color:var(--custom-text);border-radius:var(--custom-radius);padding:12px;
+}
+.custom-theme-sample{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.custom-theme-sample article,.custom-theme-action,.custom-theme-sample .sample-class{border:var(--custom-stroke) solid var(--custom-border);border-radius:var(--custom-radius);padding:8px 12px}
+.custom-theme-sample article{background:var(--custom-surface);min-width:0}
+.custom-theme-sample>header small,.custom-theme-sample article p,.custom-theme-sample article header small,.custom-theme-sample .sample-class>span{color:var(--custom-muted)}
+.custom-theme-sample header,.custom-theme-sample p{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px}
+.custom-theme-sample p{font-size:.85rem;margin:8px 0}
+.custom-theme-sample .custom-theme-action{display:inline-block;font-size:.85rem}
+.custom-theme-sample .sample-class{justify-content:flex-start;background:color-mix(in srgb,var(--custom-surface) 88%,var(--custom-contrast-base))}
+.custom-theme-action{background:var(--custom-accent);color:var(--custom-accent-ink)}
+#dlg .settings-options > .settings-radius-control{display:grid;grid-template-columns:minmax(0,1fr);background:transparent;border:0;border-radius:0!important}

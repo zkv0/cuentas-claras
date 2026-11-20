@@ -1,19 +1,20 @@
+import { createInstallApp } from './features/install.js';
 import { createCurriculumImport } from './features/curriculum-import.js';
 import { createGradeImport } from './features/grade-import.js';
 import { exportScheduleImage } from './features/schedule-image.js';
+import { createCustomAppearance, customThemesKey, customFontsKey, customContrast, customThemeStyle, normalizeCustomTheme, themeColors, themeEditorHtml, themeFromPage } from './features/custom-appearance.js';
 import { searchSubjects } from './domain/search.js';
 import { createSubjectsView } from './ui/subjects-view.js';
 import { createMotion } from './ui/motion.js';
-import { state, save, find, onSave, removeSubject, removeSemester, addSemester, switchSemester, initializeSemesters, commitSemester, importCurriculum } from './core/store.js';
+import { state, save, find, removeSubject, removeSemester, addSemester, switchSemester, initializeSemesters, commitSemester, importCurriculum } from './core/store.js';
 import { uid, num, f, esc } from './core/utils.js';
-import { DIAS, MESES, ONBOARD_KEY } from './core/constants.js';
+import { DIAS, MESES, KEY, ONBOARD_KEY, AI_KEY, LEGACY_DS_KEY } from './core/constants.js';
 import { classCount as countClasses, allowed as allowedAbsences } from './domain/attendance.js';
 import { cleanSubject, applySubjectSnapshot, subjectSnapshot } from './domain/subjects.js';
 import { createSchedule } from './features/schedule.js';
 import { createOnboarding } from './features/onboarding.js';
 import { createQrTransfer } from './features/qr-transfer.js';
 import { isAIConfigured, saveAIConfig, clearAIConfig } from './services/ai.js';
-import { createSync } from './services/sync.js';
 
 // Estado efímero de interfaz; los datos persistentes pertenecen a core/store.js.
 const ui = { anim: {}, dialogMode: '', scheduleMessage: '', reorderId: null, archOpen: false };
@@ -31,6 +32,16 @@ const themes = [
   ['amber', 'Ámbar del desierto']
 ];
 const themeKey = 'cuentas-claras-theme';
+const previousThemeKey = ['nota', 'clara', 'theme'].join('-');
+const contrastKey = 'cuentas-claras-high-contrast';
+const radiusKey = 'cuentas-claras-radius';
+let cornerRadius = 20;
+function applyRadius(value){
+  cornerRadius = Math.max(0, Math.min(48, Math.round(Number(value))));
+  document.documentElement.style.setProperty('--custom-radius', cornerRadius + 'px');
+  document.documentElement.style.setProperty('--schedule-radius', Math.min(6, cornerRadius / 2) + 'px');
+}
+let highContrast = false;
 let currentTheme = 'default';
 const typefaces = [
   ['atkinson', 'Atkinson Hyperlegible Next (predeterminada)'],
@@ -47,6 +58,8 @@ const typefaces = [
 const typefaceKey = 'cuentas-claras-typeface';
 const defaultTypeface = 'atkinson';
 let currentTypeface = defaultTypeface;
+const customAppearance = createCustomAppearance();
+let editingThemeId;
 const classCount = sub => countClasses(sub, state.sem);
 const allowed = sub => allowedAbsences(sub, state.sem);
 
@@ -90,10 +103,15 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     if(a==="searchSubjects"){openSearch();return}
     if(a==="searchResult"){openSearchResult(b.dataset.semester,b.dataset.subject);return}
     if(a==="gradeSettings"){openGradeSettings();return}
+    if(a==="installApp"){rememberGradeSettings();openInstall();return}
     if(a==="typography"){openTypography();return}
+    if(a==="importWebFont"&&ui.dialogMode==='typography'){importCustomFont($('webFontUrl'));return}
     if(a==="selectTypeface"&&ui.dialogMode==='typography'){selectTypeface(b.dataset.typefaceOption);return}
+    if(a==="removeCustomFont"&&ui.dialogMode==='typography'){removeCustomFont(b.dataset.font);return}
     if(a==="themes"){openThemes();return}
     if(a==="selectTheme"&&ui.dialogMode==='themes'){selectTheme(b.dataset.theme);return}
+    if(a==="editCustomTheme"&&ui.dialogMode==='themes'){openThemeEditor(b.dataset.themeId);return}
+    if(a==="removeCustomTheme"&&ui.dialogMode==='customTheme'){removeCustomTheme();return}
     if(a==="export"){openDlg("export");return}
     if(a==="import"){openDlg("import");return}
     if(a==="wipeAll"){openWipe();return}
@@ -134,6 +152,7 @@ const allowed = sub => allowedAbsences(sub, state.sem);
   function $(id){return document.getElementById(id)}
   function openPanel(mode, {title, description='', body='', confirm='', dismiss='Cerrar', danger=false}){
     ui.dialogMode=mode;
+    $('dlg').dataset.panel = mode;
     $('dt').textContent=title;
     $('dp').textContent=description;
     $('dta').hidden=true;
@@ -224,11 +243,11 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     return `<svg class="settings-icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
   }
   const downloadIcon='M12 3v12m-5-5 5 5 5-5M5 16v4h14v-4';
-  function settingsOptions(actions){
-    return `<div class="settings-options">${actions.map(([action, label, icon]) => `
+  function settingsOptions(actions, extra='', first=''){
+    return `<div class="settings-options">${first}${actions.map(([action, label, icon]) => `
       <button type="button" class="settings-option${action==='wipeAll'?' settings-delete':''}" data-act="${action}">
         ${settingsIcon(icon)}<span>${label}</span><span aria-hidden="true">›</span>
-      </button>`).join('')}</div>`;
+      </button>`).join('')}${extra}</div>`;
   }
   function openGradeSettings(draft){
     const { min, max, absencePct } = draft ?? { ...state.gradeScale, absencePct: state.absencePct };
@@ -247,7 +266,12 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     </section>
     <section aria-labelledby="settingsAppearanceTitle">
     <h3 id="settingsAppearanceTitle">${settingsIcon('M5 6h14v10H5zm3 14h8m-4-4v4')}Apariencia</h3>
-    ${settingsOptions([['themes', 'Temas', 'M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-4 1.5 1.5 0 0 1 1-2.5h2A4 4 0 0 0 21 10c-1-4-5-7-9-7zM7 10h.01M10 7h.01M14 7h.01M17 10h.01'], ['typography', 'Tipografía', 'M4 19 10 5l6 14m-10-4h8m3 4 3-8 3 8m-5-2h4']])}
+    ${settingsOptions([['themes', 'Temas', 'M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-4 1.5 1.5 0 0 1 1-2.5h2A4 4 0 0 0 21 10c-1-4-5-7-9-7zM7 10h.01M10 7h.01M14 7h.01M17 10h.01'], ['typography', 'Tipografía', 'M4 19 10 5l6 14m-10-4h8m3 4 3-8 3 8m-5-2h4']], `<label class="settings-option contrast-option">
+      ${settingsIcon('M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 0v18m0-5 7-7m-7 3 5-5')}
+      <span>Alto contraste</span>
+      <input id="contrastSwitch" type="checkbox" role="switch"${isHighContrast() ? ' checked' : ''}>
+      <span class="settings-switch" aria-hidden="true"></span>
+    </label>`, `<label class="settings-option settings-radius-control" for="settingsRadius"><span>Redondeo <output id="settingsRadiusValue" for="settingsRadius">${cornerRadius} px</output></span><input id="settingsRadius" type="range" min="0" max="48" step="1" value="${cornerRadius}"></label>`)}
     </section>
     <section aria-labelledby="settingsAITitle">
     <h3 id="settingsAITitle">${settingsIcon('M12 3l2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4z')}Inteligencia artificial</h3>
@@ -257,6 +281,10 @@ const allowed = sub => allowedAbsences(sub, state.sem);
       ['uploadScheduleAI', 'Subir horario con IA', 'M4 8h16v12H4zM8 8V4m8 4V4m-7 9h6m-6 3h3'],
       ['aiConfig', isAIConfigured() ? 'Gestionar API de IA' : 'Conectar API de IA', 'M8 3v5m8-5v5M6 8h12v3a6 6 0 0 1-12 0zm6 9v4']
     ])}
+    </section>
+    <section aria-labelledby="settingsAppTitle">
+    <h3 id="settingsAppTitle">${settingsIcon('M6 3h12v18H6zM11 17h2')}Aplicación</h3>
+    ${settingsOptions([['installApp', 'Instalar como app', 'M5 3h14v18H5zM12 7v8m-3-3 3 3 3-3']])}
     </section>
     <section aria-labelledby="settingsDataTitle">
     <h3 id="settingsDataTitle">${settingsIcon('M4 7h16v13H4zM3 4h18v3H3zm7 7h4')}Datos</h3>
@@ -282,20 +310,55 @@ const allowed = sub => allowedAbsences(sub, state.sem);
   function rememberGradeSettings(){
     gradeSettingsDraft = { min: $('globalMin').value, max: $('globalMax').value, absencePct: $('globalAbsencePct').value };
   }
-  function applyTheme(theme){
-    currentTheme=themes.some(([id])=>id===theme)?theme:'default';
-    document.documentElement.dataset.theme=currentTheme;
+  function applyContrast(enabled){
+    highContrast = enabled;
+    applyTheme(currentTheme);
+  }
+  function isHighContrast(){
+    return customContrast(customAppearance.themes.find(theme => theme.id === currentTheme), highContrast);
+  }
+  document.addEventListener('change', event => {
+    const field = event.target;
+    if (field.id === 'customFontFile' && ui.dialogMode === 'typography') { importCustomFont(field); return; }
+    if (field.id !== 'contrastSwitch' || ui.dialogMode !== 'gradeSettings') return;
+    const theme = customAppearance.themes.find(item => item.id === currentTheme);
+    if (theme && theme.contrast !== 'system') {
+      try { customAppearance.saveTheme({...theme, contrast:field.checked ? 'high' : 'normal'}); }
+      catch { field.checked = isHighContrast(); $('dmsg').textContent = 'No se pudo guardar el contraste.'; return; }
+      applyTheme(currentTheme);
+    } else {
+      applyContrast(field.checked);
+      try { localStorage.setItem(contrastKey, String(highContrast)); } catch {}
+    }
+  });
+  function updateThemeColor(){
     const meta=document.querySelector('meta[name="theme-color"]');
     if(meta)meta.content=getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
   }
-  function openThemes(){
-    rememberGradeSettings();
-    const options=themes.map(([id,label])=>`
+  function applyTheme(theme){
+    const custom = customAppearance.themes.find(item => item.id === theme);
+    currentTheme = (custom || themes.some(([id]) => id === theme)) ? theme : 'default';
+    const root = document.documentElement;
+    const contrast = customContrast(custom, highContrast);
+    customThemeStyle(root, custom, contrast);
+    root.dataset.theme = custom ? 'custom' : currentTheme;
+    root.dataset.contrast = contrast ? 'high' : 'normal';
+    updateThemeColor();
+  }
+  function openThemes(fromSettings = true){
+    if (fromSettings) rememberGradeSettings();
+    const options=[...themes, ...customAppearance.themes.map(theme => [theme.id, theme.name, theme])].map(([id,label,custom])=>{
+      const preview = custom ? `style="--bg:${custom.background};--surface3:${custom.surface};--accent:${custom.accent}"` : `data-theme-preview="${id}"`;
+      const select = `
       <button type="button" class="settings-option theme-option" data-act="selectTheme" data-theme="${id}" aria-pressed="${id===currentTheme}">
-        <span class="theme-preview" data-theme-preview="${id}" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span>${label}</span><span class="theme-check" aria-hidden="true">✓</span>
-      </button>`).join('');
-    openPanel('themes', {title:'Temas', body:`<div class="settings-options">${options}</div>`, dismiss:'Volver'});
+        <span class="theme-preview" ${preview} aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>${esc(label)}</span><span class="theme-check" aria-hidden="true">✓</span>
+      </button>`;
+      return custom ? `<div class="appearance-option-row">${select}<button type="button" class="ghost" data-act="editCustomTheme" data-theme-id="${id}" aria-label="Editar ${esc(label)}">Editar</button></div>` : select;
+    }).join('');
+    openPanel('themes', {title:'Temas', body:`<div class="appearance-options">
+      <button type="button" class="p" data-act="editCustomTheme">Crear tema</button><div class="settings-options">${options}</div>
+    </div>`, dismiss:'Volver'});
     $('dtab').querySelector('[aria-pressed="true"]')?.focus();
   }
   function selectTheme(theme){
@@ -305,18 +368,79 @@ const allowed = sub => allowedAbsences(sub, state.sem);
       button.setAttribute('aria-pressed',String(button.dataset.theme===currentTheme));
     });
   }
-  function applyTypeface(id){
-    currentTypeface = typefaces.some(([key]) => key === id) ? id : defaultTypeface;
-    document.documentElement.dataset.typeface = currentTypeface;
+  function openThemeEditor(id){
+    const saved = customAppearance.themes.find(theme => theme.id === id);
+    const draft = saved || themeFromPage(document.documentElement);
+    editingThemeId = saved?.id;
+    openPanel('customTheme', {title:saved ? 'Editar tema' : 'Crear tema', body:themeEditorHtml(draft), confirm:'Guardar tema', dismiss:'Cancelar'});
+    customThemeStyle($('customThemeSample'), draft, customContrast(draft, highContrast));
+    $('customThemeName').focus();
   }
-  function openTypography(){
-    rememberGradeSettings();
-    const options = typefaces.map(([id,label]) => `
+  function readThemeEditor(){
+    return normalizeCustomTheme({
+      id: editingThemeId, name: $('customThemeName').value,
+      stroke: $('customStroke').value, contrast: $('customContrast').value,
+      ...Object.fromEntries(themeColors.map(([key]) => [key, $('customColor-' + key).value]))
+    });
+  }
+  document.addEventListener('input', event => {
+    if(event.target.id==='settingsRadius'){
+      applyRadius(event.target.value);
+      $('settingsRadiusValue').textContent = cornerRadius + ' px';
+      try { localStorage.setItem(radiusKey, String(cornerRadius)); } catch {}
+      return;
+    }
+    if (ui.dialogMode !== 'customTheme' || !event.target.id?.startsWith('custom')) return;
+    const draft = readThemeEditor();
+    customThemeStyle($('customThemeSample'), draft, customContrast(draft, highContrast));
+  });
+  function saveCustomTheme(){
+    const draft = readThemeEditor();
+    if (!draft.name) { $('dmsg').textContent = 'Escribe un nombre para el tema.'; $('customThemeName').focus(); return; }
+    let id;
+    try { id = customAppearance.saveTheme(draft); }
+    catch { $('dmsg').textContent = 'No se pudo guardar el tema en este navegador.'; return; }
+    selectTheme(id);
+    openThemes(false);
+  }
+  function removeCustomTheme(){
+    try { customAppearance.removeTheme(editingThemeId); }
+    catch { $('dmsg').textContent = 'No se pudo eliminar el tema.'; return; }
+    if (currentTheme === editingThemeId) selectTheme('default');
+    openThemes(false);
+  }
+  function applyTypeface(id){
+    const root = document.documentElement;
+    const font = customAppearance.fonts.find(item => item.id === id);
+    if (currentTypeface.startsWith('font-')) root.style.removeProperty('--ui-typeface');
+    currentTypeface = (font || typefaces.some(([key]) => key === id)) ? id : defaultTypeface;
+    root.dataset.typeface = currentTypeface;
+    if (!font) return;
+    root.style.setProperty('--ui-typeface', font.id);
+    customAppearance.loadFont(font).catch(() => {
+      if (currentTypeface !== id) return;
+      selectTypeface(defaultTypeface);
+      if (ui.dialogMode === 'typography') $('dmsg').textContent = 'No se pudo cargar esta fuente.';
+    });
+  }
+  function openTypography(fromSettings = true){
+    if (fromSettings) rememberGradeSettings();
+    const options = [...typefaces, ...customAppearance.fonts.map(font => [font.id, font.name, font])].map(([id,label,font]) => {
+      const select = `
       <button type="button" class="settings-option typeface-option" data-act="selectTypeface"
         data-typeface-option="${id}" aria-pressed="${id === currentTypeface}">
-        <span>${label}</span><span class="typeface-check" aria-hidden="true">✓</span>
-      </button>`).join('');
-    openPanel('typography', {title:'Tipografía', body:`<div class="settings-options">${options}</div>`, dismiss:'Volver'});
+        <span>${esc(label)}</span><span class="typeface-check" aria-hidden="true">✓</span>
+      </button>`;
+      return font ? `<div class="appearance-option-row">${select}<button type="button" class="ghost" data-act="removeCustomFont" data-font="${id}" aria-label="Quitar ${esc(label)}">Quitar</button></div>` : select;
+    }).join('');
+    openPanel('typography', {title:'Tipografía', body:`<div class="appearance-options">
+      <label class="appearance-field">Añadir tipografía <span class="m">WOFF2, WOFF, TTF u OTF</span>
+        <input type="file" id="customFontFile" accept=".woff2,.woff,.ttf,.otf">
+      </label><label class="appearance-field">Enlace directo al archivo de fuente
+        <input type="url" id="webFontUrl" placeholder="https://ejemplo.com/fuente.woff2">
+      </label><button type="button" data-act="importWebFont">Añadir desde la web</button>
+      <div class="settings-options">${options}</div>
+    </div>`, dismiss:'Volver'});
     $('dtab').querySelector('[aria-pressed="true"]')?.focus();
   }
   function selectTypeface(id){
@@ -325,6 +449,45 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     $('dtab').querySelectorAll('[data-act="selectTypeface"]').forEach(button => {
       button.setAttribute('aria-pressed', String(button.dataset.typefaceOption === currentTypeface));
     });
+  }
+  async function importCustomFont(input){
+    const web = input.id === 'webFontUrl';
+    if (input.disabled || (!web && !input.files[0])) return;
+    const isOpen = () => ui.dialogMode === 'typography' && $(web ? 'webFontUrl' : 'customFontFile') === input;
+    input.disabled = true;
+    $('dmsg').textContent = 'Cargando tipografía…';
+    try {
+      const file = web ? await fetchFontFile(input.value.trim()) : input.files[0];
+      const font = await customAppearance.readFont(file);
+      if (!isOpen()) return;
+      let id;
+      try { id = customAppearance.addFont(font); }
+      catch { throw new Error('No se pudo guardar la fuente. Comprueba el espacio disponible en el navegador.'); }
+      selectTypeface(id);
+      openTypography(false);
+    } catch (error) {
+      if (isOpen()) $('dmsg').textContent = error.message;
+    } finally {
+      if (!web) input.value = '';
+      input.disabled = false;
+    }
+  }
+  async function fetchFontFile(value){
+    let url;
+    try { url = new URL(value); } catch {}
+    if (url?.protocol !== 'https:') throw new Error('Introduce un enlace HTTPS al archivo de fuente.');
+    let response;
+    try { response = await fetch(url, {credentials:'omit',referrerPolicy:'no-referrer'}); } catch {}
+    if (!response?.ok) throw new Error('No se pudo descargar la fuente. Comprueba que el enlace sea público y permita descargas desde esta página.');
+    const blob = await response.blob();
+    const name = url.pathname.split('/').pop() || 'Fuente web';
+    return new File([blob], /\.(woff2?|ttf|otf)$/i.test(name) ? name : name + '.woff2');
+  }
+  function removeCustomFont(id){
+    try { customAppearance.removeFont(id); }
+    catch { $('dmsg').textContent = 'No se pudo quitar la fuente.'; return; }
+    if (currentTypeface === id) selectTypeface(defaultTypeface);
+    openTypography(false);
   }
   function returnToGradeSettings(){
     const draft = gradeSettingsDraft;
@@ -405,24 +568,94 @@ const allowed = sub => allowedAbsences(sub, state.sem);
   });
 
   function openWipe(){
-    var n=state.semesters.reduce((n,x)=>n+x.subjects.length,0),a=state.semesters.reduce((n,x)=>n+x.absences.length,0);
-    $('dta').value='';
+    commitSemester();
+    const semesters = state.semesters;
+    const subjects = semesters.flatMap(semester => semester.subjects);
+    const scheduled = subjects.filter(subject => subject.days?.length).length;
+    const grades = subjects.reduce((total, subject) =>
+      total + subject.rows.filter(row => num(row.g) !== null).length, 0);
+    const absences = semesters.reduce((total, semester) => total + semester.absences.length, 0);
+    const quantity = (count, one, many) => count + ' ' + (count === 1 ? one : many);
+    $('dta').value = '';
     openPanel('wipe', {
       title:'Eliminar todos los datos',
-      description:'Se borrarán '+n+(n===1?' materia':' materias')+', '+a+(a===1?' falta':' faltas')+', el semestre y la conexión de IA de este navegador. Esta acción no se puede deshacer.',
-      confirm:'Eliminar todo', danger:true
+      description:'Se borrarán tus semestres y todas las preferencias que guarda Cuentas Claras. Esta acción no se puede deshacer.',
+      body:`<ul class="wipe-summary">
+        <li>${quantity(semesters.length, 'semestre', 'semestres')} con sus fechas.</li>
+        <li>${quantity(subjects.length, 'materia', 'materias')}, incluidas las archivadas, con sus créditos, porcentajes y predicciones.</li>
+        <li>${quantity(grades, 'nota registrada', 'notas registradas')}.</li>
+        <li>${quantity(scheduled, 'horario de materia', 'horarios de materias')} y ${quantity(absences, 'registro de faltas', 'registros de faltas')}.</li>
+        <li>La configuración de IA y sus claves guardadas, aunque sean solo de esta sesión.</li>
+        <li>Los temas y las tipografías, incluidos los personalizados, el alto contraste y los ajustes de notas y faltas.</li>
+      </ul>`,
+      confirm:'Eliminar todo', dismiss:'Cancelar', danger:true
     });
   }
+  let wipePending = false;
+  function clearAppStorage(){
+    const known = [KEY, ONBOARD_KEY, AI_KEY, LEGACY_DS_KEY, themeKey, previousThemeKey, typefaceKey, contrastKey, customThemesKey, customFontsKey];
+    for (const area of ['localStorage', 'sessionStorage']) {
+      const storage = globalThis[area];
+      if (!storage) continue;
+      const keys = new Set(known);
+      for (let i=0; i<storage.length; i++) {
+        const key = storage.key(i);
+        if (/^(calc-notas-|cuentas-claras-|nota-clara-)/.test(key)) keys.add(key);
+      }
+      for (const key of keys) storage.removeItem(key);
+    }
+  }
+  let resetChannel;
+  try {
+    if (window.BroadcastChannel) {
+      resetChannel = new window.BroadcastChannel('cuentas-claras-reset');
+      resetChannel.addEventListener('message', event => {
+        if (event.data !== 'clear') return;
+        clearAppStorage();
+        clearAIConfig();
+        window.location.reload();
+      });
+    }
+  } catch {}
   function applyWipeAll(){
-    state.subjects=[];state.absences=[];state.semesters=null;
-    state.sem={start:"",end:"",pct:""};state.gradeScale={min:3,max:5};state.absencePct='';
-    initializeSemesters();refreshSemesters();
-    clearAIConfig();
-    try{localStorage.removeItem(ONBOARD_KEY)}catch(e){}
-    Object.keys(open).forEach(function(k){delete open[k]});
-    Object.keys(open2).forEach(function(k){delete open2[k]});
-    ui.archOpen=false;ui.reorderId=null;ui.scheduleMessage="";open.faltas=false;
-    save();render();closeDlg();resetQr();
+    if (wipePending) return;
+    wipePending = true;
+    $('dgo').disabled = true;
+    $('dx').disabled = true;
+    $('dmsg').textContent = 'Borrando datos…';
+    try {
+      clearAppStorage();
+      clearAIConfig();
+      for (const key of Object.keys(state)) delete state[key];
+      Object.assign(state, {
+        subjects:[], absences:[], sem:{start:'',end:'',pct:''},
+        gradeScale:{min:3,max:5}, absencePct:''
+      });
+      initializeSemesters();
+      customAppearance.reset();
+      applyRadius(20);
+      applyContrast(false);
+      applyTheme('default');
+      applyTypeface(defaultTypeface);
+      gradeSettingsDraft = null;
+      for (const key of Object.keys(open)) delete open[key];
+      for (const key of Object.keys(open2)) delete open2[key];
+      ui.archOpen = false;
+      ui.reorderId = null;
+      ui.scheduleMessage = '';
+      refreshSemesters();
+      render();
+      resetQr();
+      closeDlg();
+      resetChannel?.postMessage('clear');
+      window.location?.reload();
+    } catch {
+      $('dmsg').textContent = 'No se pudo completar el borrado en este navegador. Inténtalo de nuevo.';
+    } finally {
+      wipePending = false;
+      $('dgo').disabled = false;
+      $('dx').disabled = false;
+    }
   }
   let returnFromAIConfig = null;
   function closeDlg(){
@@ -444,8 +677,9 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     save();refreshSemesters();ui.anim.flip=true;render();closeDlg();
   }
   function dismissDlg(){
-    if($('dlg').hidden)return;
-    if(ui.dialogMode==='scheduleExport'||ui.dialogMode==='themes'||ui.dialogMode==='typography')returnToGradeSettings();
+    if($('dlg').hidden || wipePending)return;
+    if(ui.dialogMode==='customTheme')return openThemes(false);
+    if(ui.dialogMode==='scheduleExport'||ui.dialogMode==='themes'||ui.dialogMode==='typography'||ui.dialogMode==='installApp')returnToGradeSettings();
     else closeDlg();
   }
   $("dx").addEventListener("click",dismissDlg);
@@ -459,12 +693,14 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     if(ui.dialogMode==="addSemester"||ui.dialogMode==="renameSemester"){applySemesterSettings();return}
     if(ui.dialogMode==="deleteSemester"){applyDeleteSemester();return}
     if(ui.dialogMode==="gradeSettings"){applyGradeSettings();return}
+    if(ui.dialogMode==="customTheme"){saveCustomTheme();return}
     if(ui.dialogMode==="scheduleExport"){downloadSettingsSchedule($('exportScheduleSemester').value);return}
     if(ui.dialogMode==="schedule"){applySched();return}
-    if(ui.dialogMode==="editsched"){applyEditSched();return}
+    if(ui.dialogMode==="horlist"){applyEditSched();return}
     if(ui.dialogMode==="addsched"){applyAddSched();return}
     if(ui.dialogMode==="ai"){applyAIConfig();return}
-    if(ui.dialogMode==="wipe"){applyWipeAll();return}
+    if(ui.dialogMode==="installApp"){install();return}
+    if(ui.dialogMode==="wipe")return applyWipeAll();
     if(ui.dialogMode==="qrreview"){applyImportReview();return}
     if(ui.dialogMode==="export"){
       ta.select();
@@ -503,7 +739,7 @@ const allowed = sub => allowedAbsences(sub, state.sem);
   }
   function attendanceHtml(){
     var hs=hasSchedule();
-    if(ui.attendanceView==='schedule')return '<section class="attendance-section"><div class="attendance-section-head"><h3>Horario semanal</h3><button class="ghost" data-act="editHorario">Editar horario</button></div>'+
+    if(ui.attendanceView==='schedule')return '<section class="attendance-section"><div class="attendance-section-head"><h3>Horario semanal</h3><button type="button" class="p schedule-edit-button" data-act="editHorario">'+settingsIcon('M4 15.5V20h4.5L20 8.5 15.5 4 4 15.5zM13.5 6l4.5 4.5')+'Editar horario</button></div>'+
       (hs?schedTable(stateRows()):'<div class="attendance-empty">Sin horario</div>')+
       '<div class="sch"><button data-act="exportScheduleImage">Descargar imagen</button></div><p class="m" id="schmsg" role="status">'+esc(ui.scheduleMessage||'')+'</p></section>';
     var h='<section class="attendance-section semester-dates-section">'+semBox()+'</section>'+
@@ -547,10 +783,6 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
     else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
   });
-  function limitLine(x){
-    var mx=allowed(x);if(mx===null)return "";
-    return '<p class="m hlim">Máx. '+mx+(mx===1?" falta":" faltas")+' de '+classCount(x)+' clases</p>';
-  }
   function semBox(){
     var m=state.sem;
     return '<details class="semester-date-details"><summary>'+esc(m.start&&m.end?m.start.split('-').reverse().join('/')+' – '+m.end.split('-').reverse().join('/'):'Fechas del semestre')+'</summary><div class="semg semester-dates"><label>Inicio<input type="date" aria-label="Inicio del semestre" data-sem="start" value="'+esc(m.start)+'"></label><label>Fin<input type="date" aria-label="Fin del semestre" data-sem="end" value="'+esc(m.end)+'"></label></div></details>';
@@ -592,22 +824,26 @@ const allowed = sub => allowedAbsences(sub, state.sem);
   $("cgrid").addEventListener("click",function(e){var b=e.target.closest("[data-date]");if(b)addFalta(b.dataset.date)});
   document.addEventListener("keydown",function(e){if(e.key==="Escape")closeCal()});
 
+  const {openInstall, install} = createInstallApp({
+    openPanel,
+    showMessage(message) { $('dmsg').textContent = message; },
+    isInstallOpen: () => ui.dialogMode === 'installApp'
+  });
   const { renderRaw, refreshCard } = createSubjectsView({ state, ui, open, open2, find, allowed, faltHtml, renderAttendance });
   const { render, shrink } = createMotion({ ui, renderRaw });
-  const { showSched, openHorList, applyEditSched, applySched, schedTable, stateRows, requestSchedulePhoto, openAddSched, applyAddSched, openAIConfig, applyAIConfig } =
-    createSchedule({ state, ui, save, render, find, limitLine, openPanel, closeDlg, removeSubject });
-  const { openCurriculum } = createCurriculumImport({state, importCurriculum, refreshSemesters, render, openAIConfig});
-  const { openGradeImport } = createGradeImport({ state, save, render, openAIConfig });
-  const { openOnboarding } = createOnboarding({ state, ui, save, render, schedTable, openAddSched, reviewExisting: showSched, adjustAI(resume) {
+  const { showSched, openHorList, applyEditSched, applySched, schedTable, stateRows, openAddSched, applyAddSched, openAIConfig, applyAIConfig } =
+    createSchedule({ state, ui, save, render, find, openPanel, closeDlg, removeSubject });
+  function adjustAI(resume) {
     returnFromAIConfig = resume;
-    openAIConfig(false);
-  } });
+    openAIConfig();
+  }
+  const { openCurriculum } = createCurriculumImport({state, importCurriculum, refreshSemesters, render, adjustAI});
+  const { openGradeImport } = createGradeImport({state, save, render, adjustAI});
+  const { openOnboarding } = createOnboarding({state, ui, save, render, schedTable, openAddSched, reviewExisting:showSched, adjustAI});
   const { applyImportReview, reset: resetQr } = createQrTransfer({ state, ui, openPanel, restoreSnapshot });
-  const { initSync, schedulePush } = createSync({ state, ui, render, refreshSemesters });
-  onSave(schedulePush);
+  try { applyContrast(localStorage.getItem(contrastKey) === 'true'); } catch { applyContrast(false); }
   try{
     // Conserva la preferencia guardada antes del cambio de marca.
-    const previousThemeKey = ['nota', 'clara', 'theme'].join('-');
     const savedTheme = localStorage.getItem(themeKey) || localStorage.getItem(previousThemeKey);
     applyTheme(savedTheme);
     if(savedTheme){
@@ -615,5 +851,12 @@ const allowed = sub => allowedAbsences(sub, state.sem);
       localStorage.removeItem(previousThemeKey);
     }
   }catch{applyTheme('default')}
+  try {
+    const stored = localStorage.getItem(radiusKey);
+    const legacy = customAppearance.themes.find(theme => theme.id === currentTheme)?.radius;
+    const radius = stored ?? legacy ?? 20;
+    applyRadius(Number.isFinite(Number(radius)) ? radius : 20);
+    if (stored === null && legacy != null) localStorage.setItem(radiusKey, String(cornerRadius));
+  } catch { applyRadius(20); }
   try { applyTypeface(localStorage.getItem(typefaceKey)); } catch { applyTypeface(defaultTypeface); }
-  refreshSemesters();ui.anim.first=true;render();initSync();
+  refreshSemesters();ui.anim.first=true;render();

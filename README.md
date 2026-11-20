@@ -26,25 +26,21 @@ El botón de papelera de la barra superior elimina **todos los datos**: materias
 
 Para mover todo a otro dispositivo sin backend, abre **Exportar datos** y pulsa el botón con el icono de QR. En el otro dispositivo abre **Importar datos** y pulsa el botón de la cámara. El QR incluye materias, faltas, semestre y la configuración de IA (también la clave, si la tienes configurada); trátalo como información privada. Una copia completa, por QR o por texto, **reemplaza** los semestres, materias y faltas guardados. Una lista de materias del formato antiguo agrega materias al semestre activo. La copia por texto no incluye la clave de IA.
 
-En «Horario y faltas de asistencia» puedes agregar un horario a mano, editarlo y configurar las fechas del semestre y el porcentaje máximo de faltas. La foto del horario se puede leer con la API de IA que elijas; la sincronización con una cuenta sigue requiriendo el SDK de Claude que utilizaba el código original. Sin ninguna de las dos integraciones puedes editar los horarios manualmente y conservar los datos en el navegador.
+En «Horario y faltas de asistencia» puedes agregar un horario a mano, editarlo y configurar las fechas del semestre y el porcentaje máximo de faltas. Puedes leer una foto del horario con la API de IA que elijas o pegar la respuesta de otra IA. Los datos académicos se guardan en el navegador.
 
 ## Asistente de bienvenida y foto de horario
 
 Si quieres importar tu horario, pulsa **Subir foto de horario con IA**. Se abre una ventana que te permite:
 - **Subir la foto de tu horario** (arrastrando o seleccionando una imagen).
-- **Conectar tu API de IA** en la columna contigua (DeepSeek, OpenAI, OpenRouter, Anthropic, Gemini o una API compatible) para extraer las materias y horas automáticamente.
+- **Conectar tu API de IA** en la columna contigua (DeepSeek, OpenAI, OpenRouter, Gemini o una API compatible) para extraer las materias y horas automáticamente.
 - Al confirmar el horario detectado, entras directamente a la página con todas tus materias ya creadas.
 - O bien pulsar «Agregar horario a mano» para escribir el horario de una materia sin usar una foto.
 
-## Agregar horario a mano
+## Añadir materia
 
-1. En «Horario y faltas de asistencia» pulsa «Agregar horario a mano».
-2. Escribe el nombre de la materia, elige los días y las horas de clase.
-3. Pulsa «Guardar horario». Si el nombre coincide con una materia existente, se actualiza su horario; si no, se crea la materia con ese horario.
-
-Dentro de «Editar horario» también aparece «Agregar materia» para crear otra sin salir de la ventana. En el formulario manual, «Guardar y agregar otra materia» guarda la materia actual y deja el formulario listo para la siguiente.
-
-No hay un botón para añadir una materia vacía: para que exista una materia primero hay que definir su horario, tomarlo de una foto o importarlo.
+1. Pulsa **Añadir materia** y escribe el nombre.
+2. Si ya tienes el horario, selecciona los días y las horas. Puedes completarlos más adelante desde **Horario y faltas de asistencia**.
+3. Pulsa **Añadir materia** para guardar. Si la materia ya existe y seleccionaste días, se actualiza su horario.
 
 ## Transferir por QR
 
@@ -57,7 +53,7 @@ La cámara requiere HTTPS o `http://localhost` y permiso del navegador. Si no es
 
 ## Leer el horario con IA
 
-La lectura de la foto usa el proveedor de IA que elijas. Hay opciones preparadas para DeepSeek, OpenAI, OpenRouter, Anthropic (Claude), Google Gemini y cualquier API compatible con OpenAI. El modelo debe aceptar imágenes y devolver texto; por ejemplo, `deepseek-flash`, `gpt-4o-mini` o un modelo con visión de OpenRouter.
+La lectura de la foto usa el proveedor de IA que elijas. Hay opciones preparadas para DeepSeek, OpenAI, OpenRouter, Google Gemini y cualquier API compatible con OpenAI. El modelo debe aceptar imágenes y devolver texto; por ejemplo, `deepseek-flash`, `gpt-4o-mini` o un modelo con visión de OpenRouter.
 
 1. Consigue una clave en el panel de tu proveedor.
 2. Abre «Horario y faltas de asistencia» y pulsa **«Conectar IA»**.
@@ -73,13 +69,19 @@ Para un servidor local compatible con OpenAI, como Ollama o LM Studio, elige **�
 
 Los datos de materias y faltas se guardan en `localStorage` bajo la clave `calc-notas-v2`. La compatibilidad se mantiene cuando la aplicación se abre en el mismo origen y perfil del navegador. Cambiar de dominio, puerto o navegador no traslada automáticamente esos datos. Exporta los datos desde la versión anterior e impórtalos en la nueva si cambias de origen. Conserva una exportación antes de borrar datos del navegador.
 
+## Instalar y usar sin conexión
+
+En la versión publicada con HTTPS, abre **Ajustes → Aplicación → Instalar como app**. En Safari para iPhone, abre el menú **Compartir**, elige **Añadir a pantalla de inicio** y activa **Abrir como app web** si aparece. Abre la aplicación una vez con conexión para que pueda guardar sus recursos.
+
+Puedes consultar y editar notas y horarios sin conexión. La lectura de imágenes mediante una API requiere conexión. Si la app instalada abre sin tus materias, exporta un respaldo JSON desde el navegador e impórtalo en la app.
+
 ## Organización y mantenimiento
 
 `index.html` contiene la estructura inicial; `src/app.js` conecta los eventos y módulos. Los directorios `core`, `domain`, `features`, `services` y `ui`, dentro de `src`, separan almacenamiento, cálculos, horarios, integraciones y presentación. `src/features/onboarding.js` gestiona la bienvenida con la foto del horario. `src/features/qr-transfer.js` y `src/services/qr.js` implementan la exportación e importación por QR. `src/services/ai.js` encapsula la conexión con los proveedores de IA, el envío de la imagen y la lectura del JSON. `styles` contiene las hojas de estilo y `tests` contiene las comprobaciones automatizadas.
 
 Las librerías de QR están incluidas en `assets` para funcionar sin conexión: `qrcode.js` (qrcode-generator, MIT), `lz-string.min.js` (MIT) y `jsQR.js` (Apache-2.0). No se cargan desde una CDN. Las licencias están en [assets/THIRD_PARTY.md](assets/THIRD_PARTY.md).
 
-Después de modificar archivos de `src`, ejecuta `node tools/build.mjs` para actualizar `assets/app.bundle.js`. El empaquetador está incluido y no necesita paquetes adicionales. Edita los módulos originales; el archivo preparado se genera automáticamente a partir de ellos.
+Después de modificar archivos de `src`, ejecuta `node tools/build.mjs` para actualizar `assets/app.bundle.js`. El empaquetador está incluido y no necesita paquetes adicionales. Ejecuta también la compilación tras modificar el HTML, los estilos o los iconos para regenerar la versión de la caché en `sw.js`. Edita los módulos originales; el archivo preparado se genera automáticamente a partir de ellos.
 
 La descripción de cada módulo, el formato de los datos, las decisiones de cálculo y las limitaciones están en [docs/architecture.md](docs/architecture.md).
 

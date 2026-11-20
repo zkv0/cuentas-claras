@@ -27,6 +27,8 @@
 }
 </script>
 <meta name="theme-color" content="#000000">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./assets/icon-180.png">
 <link rel="icon" type="image/svg+xml" href="./assets/cuentas-claras.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -40,10 +42,11 @@
     <div class="tools">
       <button class="icon" data-act="searchSubjects" aria-label="Buscar materias" title="Buscar materias"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button>
       <button class="icon" data-act="gradeSettings" aria-label="Configuración de Cuentas Claras" title="Configuración de Cuentas Claras"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3h4l.6 2.6 1.5.9 2.5-.8 2 3.5-1.9 1.8v2l1.9 1.8-2 3.5-2.5-.8-1.5.9L14 21h-4l-.6-2.6-1.5-.9-2.5.8-2-3.5L5.3 13v-2L3.4 9.2l2-3.5 2.5.8 1.5-.9L10 3Z"/><circle cx="12" cy="12" r="3.2"/></svg></button>
+      <button type="button" class="icon" data-act="addSched" aria-label="Añadir materia" title="Añadir materia"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
     </div>
   </div>
   <p class="app-description">Calcula tus notas y organiza tu semestre.</p>
-  <p class="sync" id="sync" hidden></p>
+  <p class="save-status" id="saveStatus" role="status" hidden></p>
   <div class="semester-bar">
     <label class="semester-picker">Semestre<select id="semesterSelect" aria-label="Semestre activo"></select></label>
     <button type="button" class="ghost semester-action" data-act="renameSemester" aria-label="Renombrar semestre" title="Renombrar semestre">
@@ -55,8 +58,8 @@
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
     </button>
     <button type="button" class="icon semester-delete" data-act="deleteSemester" aria-label="Eliminar semestre seleccionado" title="Eliminar semestre seleccionado"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></svg></button>
+    <div id="averageSummary" class="average-summary" aria-live="polite"></div>
   </div>
-  <div id="averageSummary" class="average-summary" aria-live="polite"></div>
   <div id="app"></div>
   <div class="dlg attendance-dialog" id="attendanceDlg" hidden>
     <div class="dbox attendance-box" role="dialog" aria-modal="true" aria-labelledby="attendanceTitle">
@@ -65,8 +68,8 @@
     </div>
   </div>
   <div class="dlg grades-ai-dialog" id="gradesAiDlg" hidden>
-    <div class="dbox grades-ai-box" role="dialog" aria-modal="true" aria-labelledby="gradesAiTitle">
-      <header class="grades-ai-header"><div><h2 id="gradesAiTitle">Actualizar notas con IA</h2></div><button type="button" class="icon" id="gradesAiClose" aria-label="Cerrar actualización de notas"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg></button></header>
+    <div class="dbox ai-import-box" role="dialog" aria-modal="true" aria-labelledby="gradesAiTitle">
+      <header class="ai-import-header"><h2 id="gradesAiTitle">Actualizar notas con IA</h2><button type="button" class="icon" id="gradesAiClose" aria-label="Cerrar actualización de notas"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg></button></header>
       <fieldset class="ai-method" id="grMethod">
         <legend>Método de importación</legend>
         <label><input type="radio" name="grMode" value="personal" checked>Sin API</label>
@@ -80,7 +83,7 @@
           </li>
           <li>
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16v12H9l-5 4V5Z"/><circle cx="9" cy="9" r="1"/><path d="m6 15 4-3 3 2 3-4 2 3"/></svg>
-            <span>En tu IA (Gemini, ChatGPT, Claude, etc.), pega el prompt y adjunta la captura de tus notas.</span>
+            <span>En tu IA (Gemini, ChatGPT, etc.), pega el prompt y adjunta la captura de tus notas.</span>
           </li>
           <li>
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 6-5 6 5 6m8-12 5 6-5 6M14 5l-4 14"/></svg>
@@ -90,24 +93,24 @@
         <button type="button" id="grCopy" class="copy-prompt"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 4H6a2 2 0 0 0-2 2v10"/></svg>Copiar prompt</button>
         <textarea id="grPrompt" aria-label="Prompt para copiar" readonly hidden></textarea>
         <label>Respuesta de tu IA<textarea id="grAnswer" rows="3" spellcheck="false" placeholder="Pega el JSON aquí"></textarea></label>
-        <button type="button" id="grReviewAnswer">Revisar notas</button>
+        <button type="button" class="p" id="grReviewAnswer">Revisar notas</button>
         <span role="status" id="grFeedback"></span>
       </div>
-      <input type="file" id="gradesAiFile" accept="image/png,image/jpeg,image/webp" hidden>
-      <button type="button" class="grades-ai-drop api-only" id="gradesAiDrop" aria-label="Seleccionar o cambiar captura de notas">
-        <span id="gradesAiEmpty" class="grades-ai-drop-content"><span class="grades-ai-upload-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V3m-5 5 5-5 5 5M4 16v4h16v-4"/></svg></span><strong>Subir captura</strong></span>
-        <span id="gradesAiPreview" class="grades-ai-preview" hidden><img id="gradesAiThumb" alt="Vista previa de la captura de notas"><span id="gradesAiName"></span></span>
-      </button>
+        <input type="file" id="gradesAiFile" accept="image/png,image/jpeg,image/webp" hidden>
+        <button type="button" class="ai-upload api-only" id="gradesAiDrop" aria-label="Subir captura de notas">
+          <span class="ai-upload-content" id="gradesAiEmpty"><span class="ai-upload-icon"><svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V3m-5 5 5-5 5 5M4 16v4h16v-4"/></svg></span><span>Subir captura de notas</span><small>PNG, JPG o WebP</small></span>
+          <span class="ai-upload-content" id="gradesAiPreview" hidden><img id="gradesAiThumb" alt="Vista previa de la captura"><span id="gradesAiName"></span><small>Cambiar captura</small></span>
+        </button>
       <div class="grades-ai-notice"><span aria-hidden="true">↻</span><p>Las evaluaciones del semestre se reemplazarán por las de esta captura. Puedes deshacer el cambio.</p></div>
       <p class="grades-ai-status" id="gradesAiStatus" role="status" aria-live="polite"></p><div id="gradesAiResults" class="grades-ai-results"></div>
-      <div class="grades-ai-footer"><button type="button" class="personal-only" id="grApply" hidden>Aplicar notas revisadas</button><button type="button" class="ghost api-only" id="gradesAiConfig">Configurar IA</button><button type="button" class="ghost" id="gradesAiUndo" hidden>Deshacer actualización</button><button type="button" class="p api-only" id="gradesAiSubmit" disabled>Reemplazar notas</button></div>
+      <div class="ai-import-actions"><button type="button" class="personal-only" id="grApply" hidden>Aplicar notas revisadas</button><button type="button" class="api-only" id="gradesAiConfig">Ajustar IA</button><button type="button" class="ghost" id="gradesAiUndo" hidden>Deshacer actualización</button><button type="button" class="p api-only" id="gradesAiSubmit" disabled>Reemplazar notas</button></div>
     </div>
   </div>
   <div class="dlg" id="curriculumDlg" hidden>
-    <div class="dbox grades-ai-box" role="dialog" aria-modal="true" aria-labelledby="curriculumTitle">
-      <header class="grades-ai-header">
+    <div class="dbox ai-import-box" role="dialog" aria-modal="true" aria-labelledby="curriculumTitle">
+      <header class="ai-import-header">
         <h2 id="curriculumTitle">Importar malla curricular</h2>
-        <button type="button" class="icon" id="curriculumClose" aria-label="Cerrar importación">×</button>
+        <button type="button" class="icon" id="curriculumClose" aria-label="Cerrar importación"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
       </header>
       <fieldset class="ai-method" id="cuMethod">
         <legend>Método de importación</legend>
@@ -122,7 +125,7 @@
           </li>
           <li>
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16v12H9l-5 4V5Z"/><circle cx="9" cy="9" r="1"/><path d="m6 15 4-3 3 2 3-4 2 3"/></svg>
-            <span>En tu IA (Gemini, ChatGPT, Claude, etc.), pega el prompt y adjunta el archivo o las capturas de la malla curricular.</span>
+            <span>En tu IA (Gemini, ChatGPT, etc.), pega el prompt y adjunta el archivo o las capturas de la malla curricular.</span>
           </li>
           <li>
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 6-5 6 5 6m8-12 5 6-5 6M14 5l-4 14"/></svg>
@@ -132,34 +135,32 @@
         <button type="button" id="cuCopy" class="copy-prompt"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 4H6a2 2 0 0 0-2 2v10"/></svg>Copiar prompt</button>
         <textarea id="cuPrompt" aria-label="Prompt para copiar" readonly hidden></textarea>
         <label>Respuesta de tu IA<textarea id="cuAnswer" rows="3" spellcheck="false" placeholder="Pega el JSON aquí"></textarea></label>
-        <button type="button" id="cuReviewAnswer">Revisar malla</button>
+        <button type="button" class="p" id="cuReviewAnswer">Revisar malla</button>
         <span role="status" id="cuFeedback"></span>
       </div>
-      <div class="api-only curriculum-api">
-        <label for="curriculumFiles">Capturas de la malla (PNG, JPG o WebP)</label>
-        <input type="file" id="curriculumFiles" accept="image/png,image/jpeg,image/webp" multiple>
-        <div class="curriculum-actions">
-          <button type="button" id="curriculumConfig">Configurar API</button>
-          <button type="button" class="p" id="curriculumRead">Leer malla</button>
-        </div>
+        <input type="file" id="curriculumFiles" accept="image/png,image/jpeg,image/webp" multiple hidden>
+        <button type="button" class="ai-upload api-only" id="curriculumDrop" aria-label="Subir capturas de la malla">
+          <span class="ai-upload-content" id="curriculumEmpty"><span class="ai-upload-icon"><svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V3m-5 5 5-5 5 5M4 16v4h16v-4"/></svg></span><span>Subir capturas de la malla</span><small>PNG, JPG o WebP</small></span>
+          <span class="ai-upload-content" id="curriculumPreview" hidden><span class="ai-upload-icon"><svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V3m-5 5 5-5 5 5M4 16v4h16v-4"/></svg></span><span id="curriculumName"></span><small>Cambiar capturas</small></span>
+        </button>
+      <div class="ai-import-actions api-only">
+        <button type="button" id="curriculumConfig">Ajustar IA</button>
+        <button type="button" class="p" id="curriculumRead">Leer malla</button>
       </div>
       <p class="grades-ai-status" id="curriculumStatus" role="status"></p>
       <div id="curriculumReview" class="curriculum-review"></div>
-      <div class="curriculum-actions">
+      <div class="ai-import-actions">
         <button type="button" class="p" id="curriculumApply" hidden>Importar semestres</button>
       </div>
     </div>
   </div>
-  <input type="file" id="schfile" accept="image/*" hidden>
   <div class="dlg" id="cal" hidden><div class="dbox cal" role="dialog" aria-modal="true" aria-label="Elegir fecha de la falta"><div class="calhead"><button class="icon" id="cprev" aria-label="Mes anterior">‹</button><h2 id="ctitle"></h2><button class="icon" id="cnext" aria-label="Mes siguiente">›</button></div><div class="cgrid" id="cgrid"></div><p id="cmsg"></p><div class="dact"><button id="cx">Cerrar</button></div></div></div>
   <div class="dlg" id="dlg" hidden><div class="dbox" role="dialog" aria-modal="true" aria-labelledby="dt"><h2 id="dt"></h2><p class="dp" id="dp"></p><textarea id="dta" spellcheck="false"></textarea><div id="dtab" class="dtab" hidden></div><div class="dact"><button class="p" id="dgo"></button><button class="icon" id="dqrexport" hidden aria-label="Exportar por QR" title="Exportar por QR"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h1"/></svg></button><button class="icon" id="dqrimport" hidden aria-label="Importar con cámara" title="Importar con cámara"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3"/></svg></button><button type="button" id="backupDownload">Descargar JSON</button><button type="button" id="backupOpen">Abrir JSON</button><input type="file" id="backupFile" accept=".json,application/json" hidden><button id="dx">Cerrar</button></div><p id="dmsg" role="status"></p></div></div>
   <div class="dlg" id="qrScanDlg" hidden><div class="dbox qrscan-box" role="dialog" aria-modal="true" aria-label="Escanear código QR"><h2>Escanear QR</h2><p class="dp">Apunta la cámara al código QR de Cuentas Claras. Si la copia tiene varios códigos, escanéalos en cualquier orden.</p><div class="qrscan-video"><video id="qrVideo" autoplay playsinline muted></video><div class="qrscan-frame"></div></div><p class="m" id="qrScanMsg"></p><div class="dact"><button type="button" class="ghost" id="qrScanUpload">Subir captura</button><button id="qrScanCancel">Cancelar</button></div><input type="file" id="qrScanFile" accept="image/*" hidden></div></div>
   <div class="dlg" id="onboardDlg" hidden>
-    <div class="dbox onboard-box" role="dialog" aria-modal="true" aria-labelledby="obTitle">
+    <div class="dbox ai-import-box" role="dialog" aria-modal="true" aria-labelledby="obTitle">
+      <header class="ai-import-header"><h2 id="obTitle">Importar horario</h2><button type="button" class="icon" id="obClose" aria-label="Cerrar importación"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg></button></header>
       <div id="obSetup">
-        <div class="ob-head">
-          <h2 id="obTitle">Importar horario</h2>
-        </div>
       <fieldset class="ai-method" id="obMethod">
         <legend>Método de importación</legend>
         <label><input type="radio" name="obMode" value="personal" checked>Sin API</label>
@@ -173,7 +174,7 @@
           </li>
           <li>
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16v12H9l-5 4V5Z"/><circle cx="9" cy="9" r="1"/><path d="m6 15 4-3 3 2 3-4 2 3"/></svg>
-            <span>En tu IA (Gemini, ChatGPT, Claude, etc.), pega el prompt y adjunta la foto del horario.</span>
+            <span>En tu IA (Gemini, ChatGPT, etc.), pega el prompt y adjunta la foto del horario.</span>
           </li>
           <li>
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 6-5 6 5 6m8-12 5 6-5 6M14 5l-4 14"/></svg>
@@ -183,35 +184,18 @@
         <button type="button" id="obCopy" class="copy-prompt"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 4H6a2 2 0 0 0-2 2v10"/></svg>Copiar prompt</button>
         <textarea id="obPrompt" aria-label="Prompt para copiar" readonly hidden></textarea>
         <label>Respuesta de tu IA<textarea id="obAnswer" rows="3" spellcheck="false" placeholder="Pega el JSON aquí"></textarea></label>
-        <button type="button" id="obReviewAnswer">Revisar horario</button>
+        <button type="button" class="p" id="obReviewAnswer">Revisar horario</button>
         <span role="status" id="obFeedback"></span>
       </div>
-        <div class="onboard-grid api-only">
-          <div class="onboard-col">
-            <h3>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-              Subir foto de horario
-            </h3>
-            <p class="m">Selecciona una imagen clara de tu horario con las materias y sus horas.</p>
-            <div class="onboard-dropzone" id="obDropzone" tabindex="0" role="button" aria-label="Subir foto del horario">
-              <input type="file" id="obFile" accept="image/*" hidden>
-              <div id="obDropEmpty" class="ob-drop-content">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                <span class="ob-drop-title">Arrastra tu foto aquí o haz clic para buscarla</span>
-                <span class="ob-drop-sub">PNG, JPG, JPEG o WebP</span>
-              </div>
-              <div id="obDropFilled" class="ob-drop-preview" hidden>
-                <img id="obThumb" class="onboard-thumb" alt="Vista previa del horario">
-                <span id="obFileName" class="ob-file-name"></span>
-                <button type="button" class="ghost ob-change-btn" id="obChangePhoto">Cambiar foto</button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <input type="file" id="obFile" accept="image/png,image/jpeg,image/webp" hidden>
+        <button type="button" class="ai-upload api-only" id="obDropzone" aria-label="Subir captura del horario">
+          <span class="ai-upload-content" id="obDropEmpty"><span class="ai-upload-icon"><svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V3m-5 5 5-5 5 5M4 16v4h16v-4"/></svg></span><span>Subir captura del horario</span><small>PNG, JPG o WebP</small></span>
+          <span class="ai-upload-content" id="obDropFilled" hidden><img id="obThumb" alt="Vista previa de la captura"><span id="obFileName"></span><small>Cambiar captura</small></span>
+        </button>
         <p id="obStatusMsg" class="api-only m" role="status"></p>
         <div class="onboard-actions">
           <button type="button" class="p" id="obSkip">Agregar horario a mano</button>
-          <div class="onboard-actions-right api-only">
+          <div class="ai-import-actions api-only">
             <button type="button" id="obAdjustAI">Ajustar IA</button>
             <button type="button" class="p" id="obSubmit">Leer horario</button>
           </div>

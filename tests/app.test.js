@@ -9,8 +9,13 @@ const elements = new Map();
 const listeners = new Map();
 const memory = new Map();
 function element(id) {
-  if (!elements.has(id)) elements.set(id, {
+  if (elements.has(id)) return elements.get(id);
+  const style = new Map();
+  style.setProperty = style.set.bind(style);
+  style.removeProperty = style.delete.bind(style);
+  elements.set(id, {
     hidden: id === 'onboardDlg', innerHTML: '', value: '', textContent: '', dataset: {},
+    style,
     classList: { toggle() {}, add() {}, remove() {} },
     handlers: {},
     addEventListener(event, handler) { this.handlers[event] = handler; },
@@ -20,11 +25,16 @@ function element(id) {
   });
   return elements.get(id);
 }
-globalThis.localStorage = {
-  getItem: key => memory.get(key) ?? null,
-  setItem: (key, value) => memory.set(key, value),
-  removeItem: key => memory.delete(key),
-};
+const session = new Map();
+const storageMock = store => ({
+  get length() { return store.size; },
+  key: index => [...store.keys()][index] ?? null,
+  getItem: key => store.get(key) ?? null,
+  setItem: (key, value) => store.set(key, value),
+  removeItem: key => store.delete(key),
+});
+globalThis.localStorage = storageMock(memory);
+globalThis.sessionStorage = storageMock(session);
 globalThis.document = {
   documentElement: element('html'),
   getElementById: element,
@@ -46,7 +56,7 @@ function clickAction(action, data = {}) {
   for (const handler of listeners.get('click') ?? []) handler({ target: button });
 }
 
-test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK de Claude', async () => {
+test('la distribución sin módulos arranca, crea, guarda y exporta sin servicios externos', async () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(html, /<script defer src="\.\/assets\/app\.bundle\.js"><\/script>/);
   assert.match(html, /assets\/qrcode\.js/);
@@ -63,7 +73,7 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
   assert.equal(memory.has(previousThemeKey), false);
   assert.match(element('app').innerHTML, /Aún no tienes materias/);
   assert.doesNotMatch(element('averageSummary').innerHTML, /Promedio acumulado de la carrera/);
-  const manualAction = element('app').innerHTML.match(/data-act="([^"]+)">Agregar horario a mano/);
+  const manualAction = element('app').innerHTML.match(/class="p" data-act="([^"]+)">Añadir materia/);
   assert.ok(manualAction);
   assert.match(html, /id="onboardDlg" hidden/);
   assert.equal(element('onboardDlg').hidden, true);
@@ -77,11 +87,11 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
   element('obSkip').handlers.click();
   assert.equal(element('onboardDlg').hidden, true);
   assert.equal(element('dlg').hidden, false);
-  assert.equal(element('dt').textContent, 'Agregar horario a mano');
+  assert.equal(element('dt').textContent, 'Añadir materia');
   element('dx').handlers.click();
   clickAction(manualAction[1]);
   assert.equal(element('dlg').hidden, false);
-  assert.equal(element('dt').textContent, 'Agregar horario a mano');
+  assert.equal(element('dt').textContent, 'Añadir materia');
   const scheduleDay = String(new Date().getDay());
   const setScheduleTime = (time, value) =>
     element('dtab').handlers.change({ target: { dataset: { block: '0', time }, value } });
@@ -93,6 +103,12 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
   setScheduleTime('e', '09:00');
   element('dgo').handlers.click();
   const saved = JSON.parse(memory.get('calc-notas-v2'));
+  clickAction('addSched');
+  element('asName').value = 'Cálculo';
+  element('dgo').handlers.click();
+  assert.match(element('dmsg').textContent, /Ya existe una materia/);
+  assert.deepEqual(JSON.parse(memory.get('calc-notas-v2')).subjects, saved.subjects);
+  element('dx').handlers.click();
   assert.equal(saved.subjects.length, 1);
   assert.equal(saved.subjects[0].name, 'Cálculo');
   assert.deepEqual(saved.subjects[0].days, [Number(scheduleDay)]);
@@ -105,6 +121,20 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
   clickAction('gradeSettings');
   assert.equal(element('dt').textContent, 'Configuración de Cuentas Claras');
   assert.match(element('dtab').innerHTML, /data-act="themes"/);
+  assert.match(element('dtab').innerHTML, /id="contrastSwitch" type="checkbox" role="switch">/);
+  for (const handler of listeners.get('input')) handler({target:{id:'settingsRadius',value:'0'}});
+  assert.equal(memory.get('cuentas-claras-radius'), '0');
+  const changeContrast = checked => {
+    for (const handler of listeners.get('change') ?? []) handler({target:{id:'contrastSwitch', checked}});
+  };
+  changeContrast(true);
+  assert.equal(document.documentElement.dataset.contrast, 'high');
+  assert.equal(memory.get('cuentas-claras-high-contrast'), 'true');
+  clickAction('gradeSettings');
+  assert.match(element('dtab').innerHTML, /id="contrastSwitch" type="checkbox" role="switch" checked>/);
+  changeContrast(false);
+  assert.equal(document.documentElement.dataset.contrast, 'normal');
+  assert.equal(memory.get('cuentas-claras-high-contrast'), 'false');
   assert.equal(document.documentElement.dataset.theme, 'jade');
   element('globalMax').value='4,5';
   assert.equal(document.documentElement.dataset.typeface, 'atkinson');
@@ -132,7 +162,52 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
   assert.match(element('dtab').innerHTML, /id="globalMax"[^>]*value="4,5"/);
   clickAction('themes');
   assert.match(element('dtab').innerHTML, /data-theme="blue" aria-pressed="true"/);
+  globalThis.getComputedStyle = () => ({getPropertyValue: () => ''});
+  clickAction('editCustomTheme');
+  element('customThemeName').value = 'Mi tema';
+  element('customColor-background').value = '#eef4ff';
+  assert.doesNotMatch(element('dtab').innerHTML, /customRadius/);
+  element('customStroke').value = '3';
+  element('customContrast').value = 'high';
+  assert.equal(document.documentElement.style.get('--custom-radius'), '0px');
+  assert.equal(document.documentElement.dataset.theme, 'blue');
+  element('dgo').handlers.click();
+  const custom = JSON.parse(memory.get('cuentas-claras-custom-themes'))[0];
+  assert.equal(custom.name, 'Mi tema');
+  assert.equal(memory.get('cuentas-claras-theme'), custom.id);
+  assert.equal(document.documentElement.dataset.theme, 'custom');
+  assert.equal(document.documentElement.dataset.contrast, 'high');
+  assert.equal(document.documentElement.style.get('--custom-stroke'), '3px');
+  clickAction('editCustomTheme', { themeId: custom.id });
+  assert.match(element('dtab').innerHTML, /value="Mi tema"/);
+  element('dx').handlers.click();
   clickAction('selectTheme', { theme: 'default' });
+  assert.equal(document.documentElement.style.has('--custom-stroke'), false);
+  element('dx').handlers.click();
+  clickAction('typography');
+  const fileInput = element('customFontFile');
+  fileInput.id = 'customFontFile';
+  fileInput.files = [{name:'Mi fuente.woff2'}];
+  globalThis.FileReader = class {
+    readAsDataURL() { this.result = 'data:font/woff2;base64,AQID'; this.onload(); }
+  };
+  globalThis.FontFace = class {
+    constructor(family, bytes) { this.family = family; assert.deepEqual([...bytes],[1,2,3]); }
+    async load() { return this; }
+  };
+  document.fonts = new Set();
+  for (const handler of listeners.get('change')) handler({target:fileInput});
+  await new Promise(resolve => setImmediate(resolve));
+  const customFont = JSON.parse(memory.get('cuentas-claras-custom-fonts'))[0];
+  assert.equal(customFont.name, 'Mi fuente');
+  assert.equal(document.documentElement.dataset.typeface, customFont.id);
+  assert.equal(document.documentElement.style.get('--ui-typeface'), customFont.id);
+  assert.equal(document.fonts.size, 1);
+  clickAction('selectTypeface', { typefaceOption: 'fraunces' });
+  assert.equal(document.documentElement.style.has('--ui-typeface'), false);
+  delete globalThis.getComputedStyle;
+  delete globalThis.FileReader;
+  delete globalThis.FontFace;
   element('dx').handlers.click();
   assert.match(element('dtab').innerHTML, /data-act="export"/);
   assert.match(element('dtab').innerHTML, /data-act="exportSettingsSchedule"/);
@@ -196,22 +271,27 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
   assert.equal(JSON.parse(element('dta').value).subjects.length, 1);
   element('dx').handlers.click();
   clickAction('editHorario');
-  assert.equal(element('dgo').hidden, true);
+  assert.equal(element('dgo').textContent, 'Guardar horario');
   assert.match(element('dtab').innerHTML, /data-hl-new/);
-  assert.match(element('dtab').innerHTML, /Agregar materia/);
-  element('dtab').handlers.click({
-    target: { closest: selector => selector === '[data-hl-edit]' ? { dataset: { hlEdit: saved.subjects[0].id } } : null },
-  });
+  assert.match(element('dtab').innerHTML, /Añadir materia/);
+  assert.doesNotMatch(element('dtab').innerHTML, /Sin horario|Agregar horario|data-hl-edit/);
   assert.match(element('dtab').innerHTML, /data-time="s" value="07:00"/);
-  setScheduleTime('s', '08:00');
+  const row = {dataset:{hlSubject:saved.subjects[0].id}};
+  element('dtab').handlers.change({target:{
+    dataset:{block:'0',time:'s'}, value:'08:00',
+    closest: selector => selector === '[data-hl-subject]' ? row : null,
+  }});
   element('dgo').handlers.click();
   assert.equal(JSON.parse(memory.get('calc-notas-v2')).subjects[0].blocks[0].s, '08:00');
+  clickAction('editHorario');
   element('dtab').handlers.click({
     target: { closest: selector => selector === '[data-hl-new]' ? {} : null },
   });
-  assert.equal(element('dt').textContent, 'Agregar horario a mano');
-  assert.match(element('dtab').innerHTML, /data-add-another/);
-  // Cambiar de diálogo debe recuperar el botón que la lista de horarios oculta.
+  assert.equal(element('dt').textContent, 'Añadir materia');
+  assert.doesNotMatch(element('dtab').innerHTML, /data-add-another/);
+  assert.equal(element('dgo').textContent, 'Añadir materia');
+  assert.equal(element('dx').textContent, 'Cerrar');
+  // Cambiar de diálogo debe mostrar los controles de importación.
   clickAction('import');
   assert.equal(element('dgo').hidden, false);
   assert.equal(element('dqrimport').hidden, false);
@@ -467,17 +547,57 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
     delete document.createElement;
   }
   // El borrado total limpia también la IA y la marca de bienvenida.
+  memory.set('otra-app-preferencia','conservar');
+  memory.set('cuentas-claras-preferencia-futura','borrar');
+  memory.set(['nota','clara','theme'].join('-'),'rose');
+  session.set('calc-notas-ai','borrar');
+  session.set('calc-notas-deepseek','borrar');
   clickAction('wipeAll');
   assert.equal(element('dlg').hidden, false);
   assert.equal(element('dt').textContent, 'Eliminar todos los datos');
+  const wipeBackup = JSON.parse(memory.get('calc-notas-v2'));
+  assert.match(element('dtab').innerHTML, new RegExp(wipeBackup.semesters.length + ' semestre'));
+  assert.match(element('dtab').innerHTML, /1 materia, incluidas las archivadas/);
+  assert.match(element('dtab').innerHTML, /1 horario de materia y 1 registro de faltas/);
+  assert.equal(element('dx').textContent, 'Cancelar');
   assert.equal(element('dgo').textContent, 'Eliminar todo');
-  element('dgo').handlers.click();
+  await element('dgo').handlers.click();
   assert.equal(element('dlg').hidden, true);
-  assert.equal(memory.has('calc-notas-ai'), false);
-  assert.equal(memory.has('calc-notas-onboarded'), false);
-  assert.equal(JSON.parse(memory.get('calc-notas-v2')).subjects.length, 0);
-  assert.equal(JSON.parse(memory.get('calc-notas-v2')).semesters.length,1);
+  assert.deepEqual([...memory], [['otra-app-preferencia','conservar']]);
+  assert.equal(session.size, 0);
+  assert.equal(document.documentElement.dataset.theme, 'default');
+  assert.equal(document.documentElement.dataset.typeface, 'atkinson');
+  assert.equal(document.fonts.size, 0);
+  assert.equal(document.documentElement.dataset.contrast, 'normal');
   assert.match(element('app').innerHTML, /Aún no tienes materias/);
+});
+
+test('añade una materia usando solo su nombre', () => {
+  clickAction('addSched');
+  element('asName').value = 'Álgebra';
+  element('dgo').handlers.click();
+  const [subject] = JSON.parse(memory.get('calc-notas-v2')).subjects;
+  assert.equal(subject.name, 'Álgebra');
+  assert.deepEqual(subject.days, []);
+  assert.deepEqual(subject.blocks, []);
+  assert.equal(element('dlg').hidden, true);
+  assert.doesNotMatch(element('app').innerHTML, /class="fbox"/);
+  clickAction('editHorario');
+  assert.match(element('dtab').innerHTML, /data-eday="1" aria-pressed="false"/);
+  assert.doesNotMatch(element('dtab').innerHTML, /data-time=/);
+  const fields = element('test-hl-fields');
+  const row = {dataset:{hlSubject:subject.id},querySelector:()=>fields};
+  const name = {dataset:{hlName:''},value:'Álgebra lineal',closest:()=>row};
+  element('dtab').handlers.input({target:name});
+  const day = {dataset:{eday:'1'},closest:selector=>selector === '[data-hl-subject]' ? row : null};
+  element('dtab').handlers.click({target:{closest:selector=>
+    selector === '[data-eday]' ? day : day.closest(selector)}});
+  assert.match(fields.innerHTML, /data-eday="1" aria-pressed="true"/);
+  assert.match(fields.innerHTML, /data-time="s"/);
+  element('dgo').handlers.click();
+  assert.deepEqual(JSON.parse(memory.get('calc-notas-v2')).subjects[0].days,[1]);
+  assert.equal(JSON.parse(memory.get('calc-notas-v2')).subjects[0].name, 'Álgebra lineal');
+  assert.match(element('app').innerHTML, /class="fbox"/);
 });
 
 test('la papelera pide confirmar el semestre y cancelar conserva sus datos', () => {
