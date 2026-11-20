@@ -1,19 +1,18 @@
 import { AI_KEY, LEGACY_DS_KEY } from '../core/constants.js';
 
 /** Lectura de horarios con APIs de IA que aceptan imágenes.
- * Se soportan endpoints compatibles con OpenAI y el formato de Anthropic.
+ * Se soportan endpoints compatibles con OpenAI.
  * La clave se usa directamente desde el navegador y nunca se incluye en la
  * exportación de datos. La app sigue funcionando sin conexión de IA.
  */
 export const AI_MAX_IMAGE = 1800;
 
 export const AI_PROVIDERS = [
-  { id: 'deepseek', label: 'DeepSeek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', format: 'openai', keyRequired: true },
-  { id: 'openai', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini', format: 'openai', keyRequired: true },
-  { id: 'openrouter', label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', model: 'openai/gpt-4o-mini', format: 'openai', keyRequired: true },
-  { id: 'anthropic', label: 'Anthropic (Claude)', baseUrl: 'https://api.anthropic.com', model: 'claude-sonnet-4-5', format: 'anthropic', keyRequired: true },
-  { id: 'google', label: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash', format: 'openai', keyRequired: true },
-  { id: 'custom', label: 'Otra API compatible con OpenAI', baseUrl: '', model: '', format: 'openai', keyRequired: false },
+  { id: 'deepseek', label: 'DeepSeek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', keyRequired: true },
+  { id: 'openai', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini', keyRequired: true },
+  { id: 'openrouter', label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', model: 'openai/gpt-4o-mini', keyRequired: true },
+  { id: 'google', label: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash', keyRequired: true },
+  { id: 'custom', label: 'Otra API compatible con OpenAI', baseUrl: '', model: '', keyRequired: false },
 ];
 
 let memoryConfig = null;
@@ -29,7 +28,6 @@ export function providerDefaults(id) {
     model: provider.model,
     label: provider.label,
     keyRequired: provider.keyRequired,
-    format: provider.format,
   };
 }
 
@@ -44,7 +42,7 @@ function normalizeBase(value, fallback) {
 }
 
 export function normalizeAIConfig(raw) {
-  var source = raw && typeof raw === 'object' ? raw : {};
+  var source = raw && typeof raw === 'object' && (!raw.provider || AI_PROVIDERS.some(item => item.id === raw.provider)) ? raw : {};
   var provider = AI_PROVIDERS.some(item => item.id === source.provider) ? source.provider : 'deepseek';
   var preset = providerInfo(provider);
   return {
@@ -57,16 +55,18 @@ export function normalizeAIConfig(raw) {
 }
 
 function readConfigKey(key) {
-  try {
-    var local = localStorage.getItem(key);
-    if (local) return JSON.parse(local);
-  } catch (error) {}
-  try {
-    if (typeof sessionStorage !== 'undefined') {
-      var session = sessionStorage.getItem(key);
-      if (session) return JSON.parse(session);
-    }
-  } catch (error) {}
+  for (const area of ['localStorage', 'sessionStorage']) {
+    try {
+      const storage = globalThis[area];
+      const raw = JSON.parse(storage?.getItem(key) ?? 'null');
+      if (!raw || typeof raw !== 'object') continue;
+      if (raw.provider && !AI_PROVIDERS.some(provider => provider.id === raw.provider)) {
+        storage.removeItem(key);
+        continue;
+      }
+      return raw;
+    } catch {}
+  }
   return null;
 }
 
@@ -131,29 +131,9 @@ export function buildSchedulePrompt(names) {
   ].join(' ');
 }
 
-function splitDataUrl(value) {
-  var match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/i.exec(String(value || ''));
-  if (!match) return null;
-  return { mediaType: match[1], data: match[2] };
-}
-
 function buildScheduleRequest(config, imageUrls, prompt, maxTokens) {
   var normalized = normalizeAIConfig(config);
-  var info = providerInfo(normalized.provider);
   var text = String(prompt || buildSchedulePrompt([]));
-  if (info.format === 'anthropic') {
-    const images = imageUrls.map(url => {
-      const source = splitDataUrl(url);
-      return source
-        ? { type: 'image', source: { type: 'base64', media_type: source.mediaType, data: source.data } }
-        : { type: 'image', source: { type: 'url', url } };
-    });
-    return {
-      model: normalized.model,
-      max_tokens: maxTokens,
-      messages: [{ role: 'user', content: [{ type: 'text', text: text }, ...images] }],
-    };
-  }
   var body = {
     model: normalized.model,
     messages: [{
@@ -254,46 +234,22 @@ function contentText(content) {
   return content == null ? '' : String(content);
 }
 
-function responseContent(data, info) {
-  if (info.format === 'anthropic') return contentText(data && data.content);
+function responseContent(data) {
   var choice = data && data.choices && data.choices[0];
   return contentText(choice && choice.message && choice.message.content);
 }
 
 function cleanBase(value) {
-  return String(value || '').trim().replace(/\/+$/, '').replace(/\/(chat\/completions|messages|models)$/, '');
+  return String(value || '').trim().replace(/\/+$/, '').replace(/\/(chat\/completions|models)$/, '');
 }
 
 function openAIEndpoint(base, path) {
   return cleanBase(base) + path;
 }
 
-function anthropicEndpoint(base, path) {
-  var clean = cleanBase(base);
-  return /\/v1$/.test(clean) ? clean + path : clean + '/v1' + path;
-}
-
-function chatEndpoint(config, info) {
-  return info.format === 'anthropic'
-    ? anthropicEndpoint(config.baseUrl, '/messages')
-    : openAIEndpoint(config.baseUrl, '/chat/completions');
-}
-
-function modelsEndpoint(config, info) {
-  return info.format === 'anthropic'
-    ? anthropicEndpoint(config.baseUrl, '/models')
-    : openAIEndpoint(config.baseUrl, '/models');
-}
-
-function requestHeaders(config, info, hasBody) {
-  var headers = {};
-  if (info.format === 'anthropic') {
-    headers['x-api-key'] = config.apiKey;
-    headers['anthropic-version'] = '2023-06-01';
-    headers['anthropic-dangerous-direct-browser-access'] = 'true';
-  } else if (config.apiKey) {
-    headers.Authorization = 'Bearer ' + config.apiKey;
-  }
+function requestHeaders(config, hasBody) {
+  const headers = {};
+  if (config.apiKey) headers.Authorization = 'Bearer ' + config.apiKey;
   if (hasBody) headers['Content-Type'] = 'application/json';
   return headers;
 }
@@ -372,10 +328,10 @@ export const readScheduleImage = async function (image, config, prompt, document
     imageUrls.push(typeof item === 'string' && /^data:image\//i.test(item) ? item : await prepareImage(item));
   }
   var body = buildScheduleRequest(normalized, imageUrls, prompt, maxTokens);
-  var url = chatEndpoint(normalized, info);
+  var url = openAIEndpoint(normalized.baseUrl, '/chat/completions');
   var options = {
     method: 'POST',
-    headers: requestHeaders(normalized, info, true),
+    headers: requestHeaders(normalized, true),
     body: JSON.stringify(body),
   };
   var data;
@@ -389,14 +345,14 @@ export const readScheduleImage = async function (image, config, prompt, document
     delete retryBody.response_format;
     data = await requestJson(url, {
       method: 'POST',
-      headers: requestHeaders(normalized, info, true),
+      headers: requestHeaders(normalized, true),
       body: JSON.stringify(retryBody),
     }, 90000, info.label);
   }
-  var content = responseContent(data, info);
+  var content = responseContent(data);
   if (!content.trim()) {
     data = await requestJson(url, options, 90000, info.label);
-    content = responseContent(data, info);
+    content = responseContent(data);
   }
   var parsed = extractJson(content);
   if (!parsed || !Array.isArray(parsed[collection])) {
@@ -409,11 +365,11 @@ export const testAIConnection = async function (config) {
   var checked = validateConfig(config);
   var normalized = checked.config;
   var info = checked.info;
-  var url = modelsEndpoint(normalized, info);
+  var url = openAIEndpoint(normalized.baseUrl, '/models');
   try {
     var data = await requestJson(url, {
       method: 'GET',
-      headers: requestHeaders(normalized, info, false),
+      headers: requestHeaders(normalized, false),
     }, 20000, info.label);
     var list = Array.isArray(data && data.data) ? data.data : [];
     return list.map(function (model) {

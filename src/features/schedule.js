@@ -3,56 +3,45 @@ import { parseSchedule } from '../domain/schedule-import.js';
 import { createScheduledSubject } from '../domain/subjects.js';
 import { esc, tm, toMin, fm } from '../core/utils.js';
 import { DIAS } from '../core/constants.js';
-import { AI_PROVIDERS, providerDefaults, loadAIConfig, saveAIConfig, clearAIConfig, isAIConfigured, readScheduleImage, testAIConnection, buildSchedulePrompt } from '../services/ai.js';
+import { AI_PROVIDERS, providerDefaults, loadAIConfig, saveAIConfig, clearAIConfig, isAIConfigured, testAIConnection } from '../services/ai.js';
 
-/** Edición manual y lectura de la foto con una API de IA configurable.
- * Si no hay conexión configurada se mantiene el SDK del entorno Claude como
- * alternativa y, si tampoco existe, se abre el formulario de conexión.
- */
-export function createSchedule({ state, ui, save, render, find, limitLine, openPanel, closeDlg, removeSubject }) {
+export function createSchedule({ state, ui, save, render, find, openPanel, closeDlg, removeSubject }) {
   const $ = id => document.getElementById(id);
   let pendingSched = null, scheduleReview = null;
-  var ORDD=[1,2,3,4,5,6,0],editDraft=null,editSubId=null,addDraft=null,addReturnToList=false,aiPendingUpload=false;
-  function horSummary(x){
-    var on=(x.days||[]).length>0;
-    if(!on)return '<p class="m hsnone">Sin horario</p>';
-        var lines='';
-    ORDD.forEach(function(d){
-      if(x.days.indexOf(d)<0)return;
-      var bl=(x.blocks||[]).filter(function(b){return b.d===d});
-      var t=bl.length?bl.map(function(b){return b.s&&b.e?b.s+" – "+b.e:"sin hora"}).join(", "):"sin hora";
-      lines+='<div class="hl2"><span>'+DIAS[d]+'</span><span>'+esc(t)+'</span></div>';
-    });
-    return '<div class="hlines">'+lines+'</div>'+limitLine(x);
-  }
-  function openHorList(){
-    editSubId=null;editDraft=null;
-    var subs=state.subjects.filter(function(x){return !x.archived});
-    var h='<div class="hl-actions"><button class="p" data-hl-new>Agregar materia</button></div>';
-    if(!subs.length)h+='<p class="m">Aún no tienes materias. Agrega la primera con su horario.</p>';
-    subs.forEach(function(x){
-      var on=(x.days||[]).length>0;
-      h+='<div class="srow"><div><span class="fd">'+esc(x.name||"Sin nombre")+'</span>'+horSummary(x)+'</div><div class="sact"><button class="ghost" data-hl-edit="'+x.id+'">'+(on?"Modificar horario":"Agregar horario")+'</button>'+(on?'<button class="ghost" data-hl-delete="'+x.id+'">Eliminar materia</button>':'')+'</div></div>';
-    });
+  const ORDD = [1,2,3,4,5,6,0];
+  const editDrafts = new Map();
+  let addDraft = null, addReturnToList = false;
+
+  function openHorList(reset = true){
+    if (reset) editDrafts.clear();
+    const subjects = state.subjects.filter(subject => !subject.archived);
+    const rows = subjects.map(subject => {
+      if (!editDrafts.has(subject.id)) {
+        const days = [...(subject.days || [])];
+        const blocks = (subject.blocks || []).map(block => ({d:+block.d,s:block.s || '',e:block.e || ''}));
+        for (const day of days) {
+          if (!blocks.some(block => block.d === day)) blocks.push({d:day,s:'',e:''});
+        }
+        editDrafts.set(subject.id, {name:subject.name || '', days, blocks, changed:false});
+      }
+      const draft = editDrafts.get(subject.id);
+      const id = esc(subject.id);
+      return '<section class="srow" data-hl-subject="'+id+'"><header><input class="schedule-subject-name" data-hl-name aria-label="Nombre de la materia" placeholder="Nombre de la materia" value="'+esc(draft.name)+'">'+
+        '<button type="button" class="icon schedule-delete" data-hl-delete="'+id+'" aria-label="Eliminar materia" title="Eliminar materia">'+
+        '<svg aria-hidden="true" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v6m4-6v6"/></svg></button></header>'+
+        '<div data-hl-fields>'+scheduleEditor(draft)+'</div></section>';
+    }).join('');
     openPanel('horlist', {
       title:'Editar horario',
-      description:'Modifica el horario de cada materia o elimínala para quitarla de la lista, el horario y las faltas.',
-      body:h
+      body:'<div class="hl-actions"><button type="button" class="ghost" data-hl-new>Añadir materia</button></div>'+
+        (rows || '<p class="m">Aún no tienes materias.</p>'),
+      confirm:subjects.length ? 'Guardar horario' : ''
     });
   }
-  function openSchedEdit(sub){
-    if(!sub)return;
-    editSubId=sub.id;
-    editDraft={days:(sub.days||[]).slice(),blocks:(sub.blocks||[]).map(function(k){return{d:+k.d,s:k.s||"",e:k.e||""}})};
-    openPanel('editsched', {
-      title:'Horario de '+(sub.name||'la materia'),
-      description:'Elige los días y las horas de clase. Al guardar se actualiza el horario.',
-      body:scheduleEditor(editDraft), confirm:'Guardar'
-    });
-  }
-  function activeDraft(){
-    if(ui.dialogMode==='addsched')return addDraft;
-    if(ui.dialogMode==='editsched')return editDraft;
+
+  function activeDraft(target){
+    if (ui.dialogMode === 'addsched') return addDraft;
+    if (ui.dialogMode === 'horlist') return editDrafts.get(target.closest('[data-hl-subject]')?.dataset.hlSubject);
     return null;
   }
   function scheduleEditor(draft){
@@ -75,23 +64,36 @@ export function createSchedule({ state, ui, save, render, find, limitLine, openP
         <label>Materia<input id="asName" list="asNames" autocomplete="off" spellcheck="false" placeholder="Ej. Cálculo" value="${esc(draft.name)}"></label>
         <datalist id="asNames">${subjectNames().map(name => `<option value="${esc(name)}"></option>`).join('')}</datalist>
         ${fields}
-        <div class="addsched-actions"><button type="button" class="ghost" data-add-another>Guardar y agregar otra materia</button></div>
       </div>` : fields;
   }
   function applyEditSched(){
-    var sub=find(editSubId);if(!sub||!editDraft)return;
-    var ds=editDraft.days.slice();
-    sub.days=ds;
-    sub.blocks=editDraft.blocks.filter(function(b){return ds.indexOf(b.d)>=0}).map(function(b){return{d:b.d,s:b.s,e:b.e}});
-    save();render();openHorList();
+    for (const draft of editDrafts.values()) {
+      if (draft.nameChanged && !draft.name.trim()) {
+        $('dmsg').textContent = 'Escribe el nombre de la materia.';
+        return;
+      }
+    }
+    for (const [id, draft] of editDrafts) {
+      const subject = find(id);
+      if (!subject) continue;
+      if (draft.nameChanged) subject.name = draft.name.trim();
+      if (!draft.changed) continue;
+      subject.days = draft.days.slice();
+      subject.blocks = draft.blocks.filter(block => draft.days.includes(block.d))
+        .map(block => ({d:block.d, s:tm(block.s), e:tm(block.e)}));
+    }
+    save();
+    render();
+    closeDlg();
+    setSch('Horario guardado.');
   }
   function openAddSched(fromList){
     addReturnToList=!!fromList;
     addDraft={name:"",days:[],blocks:[]};
     openPanel('addsched', {
-      title:'Agregar horario a mano',
-      description:'Escribe la materia y elige los días y horas. Si ya existe una materia con ese nombre, se actualiza su horario; si no, se crea con este horario.',
-      body:scheduleEditor(addDraft), confirm:'Guardar horario'
+      title:'Añadir materia',
+      description:'Escribe el nombre de la materia. Puedes añadir el horario ahora o más adelante.',
+      body:scheduleEditor(addDraft), confirm:'Añadir materia'
     });
     var name=$("asName");if(name)name.focus();
   }
@@ -108,34 +110,31 @@ export function createSchedule({ state, ui, save, render, find, limitLine, openP
       draft.days.push(day);
       draft.blocks.push({d:day,s:'',e:''});
     }
-    $('dtab').innerHTML=scheduleEditor(draft);
   }
-  function saveAddSched(reopen){
+  function applyAddSched(){
     if(!addDraft)return;
     syncAddName();
     var name=String(addDraft.name||"").trim();
     if(!name){$("dmsg").textContent="Escribe el nombre de la materia.";return}
     var days=addDraft.days.slice();
-    if(!days.length){$("dmsg").textContent="Elige al menos un día de clase.";return}
     var blocks=addDraft.blocks.filter(function(b){return days.indexOf(b.d)>=0}).map(function(b){return{d:b.d,s:tm(b.s),e:tm(b.e)}});
     var match=exactSubject(name);
+    if(match && !days.length){
+      $("dmsg").textContent="Ya existe una materia con ese nombre.";
+      return;
+    }
     if(match){match.days=days;match.blocks=blocks}
     else state.subjects.push(createScheduledSubject({name,days,blocks}));
     addDraft=null;save();ui.anim.flip=true;render();
-    if(reopen){
-      openAddSched(false);
-      $("dmsg").textContent="Materia guardada. Puedes agregar otra.";
-      setSch("Horario guardado.");
-    }else if(addReturnToList){
+    if(addReturnToList){
       addReturnToList=false;
-      openHorList();
-      setSch("Horario guardado.");
+      openHorList(false);
+      setSch(days.length ? "Horario guardado." : "Materia añadida.");
     }else{
       closeDlg();
-      setSch("Horario guardado.");
+      setSch(days.length ? "Horario guardado." : "Materia añadida.");
     }
   }
-  function applyAddSched(){saveAddSched(false)}
   $("dtab").addEventListener("click",function(e){
     if(ui.dialogMode==="ai"){
       if(e.target.closest("[data-ai-test]")){testAI();return}
@@ -144,36 +143,63 @@ export function createSchedule({ state, ui, save, render, find, limitLine, openP
     }
     if(ui.dialogMode==="horlist"){
       if(e.target.closest("[data-hl-new]")){openAddSched(true);return}
-      var eb=e.target.closest("[data-hl-edit]");
-      if(eb){openSchedEdit(find(eb.dataset.hlEdit));return}
       var cb=e.target.closest("[data-hl-delete]");
       if(cb){
         var cs=find(cb.dataset.hlDelete);if(!cs)return;
         if(!cb.dataset.arm){
-          cb.dataset.arm="1";cb.textContent="Toca otra vez para eliminar de todas partes";
-          cb.style.color="var(--bad-ink)";cb.style.borderColor="var(--bad-ink)";
-          setTimeout(function(){if(cb.isConnected){delete cb.dataset.arm;cb.textContent="Eliminar materia";cb.style.color="";cb.style.borderColor=""}},3000);
+          const confirmation = 'Toca la papelera otra vez para eliminar la materia.';
+          cb.dataset.arm = '1';
+          cb.setAttribute('aria-label','Confirmar eliminación de materia');
+          cb.title = 'Confirmar eliminación';
+          $('dmsg').textContent = confirmation;
+          setTimeout(() => {
+            if (!cb.isConnected) return;
+            delete cb.dataset.arm;
+            cb.setAttribute('aria-label','Eliminar materia');
+            cb.title = 'Eliminar materia';
+            if ($('dmsg').textContent === confirmation) $('dmsg').textContent = '';
+          }, 3000);
           return;
         }
         removeSubject(cs.id);
-        if(editSubId===cs.id){editSubId=null;editDraft=null}
-        render();openHorList();
+        editDrafts.delete(cs.id);
+        render();openHorList(false);
+        return;
       }
-      return;
     }
-    if(ui.dialogMode==="addsched"&&e.target.closest("[data-add-another]")){saveAddSched(true);return}
-    const draft = activeDraft();
+    const draft = activeDraft(e.target);
     const day = e.target.closest("[data-eday]");
-    if(draft && day)toggleDay(draft, Number(day.dataset.eday));
+    if (!draft || !day) return;
+    const fields = ui.dialogMode === 'horlist'
+      ? day.closest('[data-hl-subject]').querySelector('[data-hl-fields]')
+      : $('dtab');
+    toggleDay(draft, Number(day.dataset.eday));
+    draft.changed = true;
+    fields.innerHTML = scheduleEditor(draft);
+    fields.querySelector('[data-eday="'+day.dataset.eday+'"]')?.focus();
   });
   $("dtab").addEventListener("change",function(e){
     var el=e.target;
     if(ui.dialogMode==="ai"&&el.id==="aiProvider"){applyAIProvider(el.value);return}
-    const block = activeDraft()?.blocks[el.dataset?.block];
-    if(block)block[el.dataset.time]=el.value;
+    if (el.dataset?.block == null) return;
+    const draft = activeDraft(el);
+    const block = draft?.blocks[el.dataset.block];
+    if (block) {
+      block[el.dataset.time] = el.value;
+      draft.changed = true;
+    }
   });
   $("dtab").addEventListener("input",function(e){
-    if(ui.dialogMode==="addsched"&&e.target&&e.target.id==="asName"&&addDraft)addDraft.name=e.target.value;
+    const field = e.target;
+    if (ui.dialogMode === 'addsched' && field.id === 'asName' && addDraft) addDraft.name = field.value;
+    if (ui.dialogMode === 'horlist' && field.dataset?.hlName !== undefined) {
+      const draft = activeDraft(field);
+      if (draft) {
+        draft.name = field.value;
+        draft.nameChanged = true;
+        $('dmsg').textContent = '';
+      }
+    }
   });
 
   /* conexión con una API de IA */
@@ -201,8 +227,7 @@ export function createSchedule({ state, ui, save, render, find, limitLine, openP
       remember:remember?!!remember.checked:true
     };
   }
-  function openAIConfig(fromUpload){
-    aiPendingUpload=!!fromUpload;
+  function openAIConfig(){
     var cfg=loadAIConfig();
     const body='<div class="dsform">'+
       '<label>Proveedor<select id="aiProvider">'+providerOptions(cfg.provider)+'</select></label>'+
@@ -228,9 +253,7 @@ export function createSchedule({ state, ui, save, render, find, limitLine, openP
       return;
     }
     cfg=saveAIConfig(cfg);
-    var photo=aiPendingUpload;aiPendingUpload=false;
-    closeDlg();setSch(photo?"IA conectada. Elige la foto de tu horario.":"Conexión de IA guardada.");render();
-    if(photo)$("schfile").click();
+    closeDlg();setSch("Conexión de IA guardada.");render();
   }
   function testAI(){
     var cfg=aiFormConfig();
@@ -250,13 +273,6 @@ export function createSchedule({ state, ui, save, render, find, limitLine, openP
     setSch("Conexión de IA eliminada.");
     render();
   }
-  function requestSchedulePhoto(){
-    if(isAIConfigured()||(window.claude&&window.claude.use)){$("schfile").click();return}
-    setSch("Conecta una API de IA para leer la foto del horario.");
-    openAIConfig(true);
-  }
-
-  /* horario con foto + IA */
   function norm(t){return String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9 ]/g,"").trim()}
   function matchSubject(n){
     var q=norm(n),best=null;
@@ -273,30 +289,6 @@ export function createSchedule({ state, ui, save, render, find, limitLine, openP
   }
   function subjectNames(){
     return state.subjects.filter(function(x){return !x.archived&&x.name}).map(function(x){return x.name});
-  }
-  function readSchedule(file){
-    if(isAIConfigured()){
-      setSch("Leyendo tu horario con IA…");
-      readScheduleImage(file,loadAIConfig(),buildSchedulePrompt(subjectNames())).then(showSched).catch(function(e){
-        setSch((e&&e.message)||"No pude leer el horario. Prueba con una foto más clara.");
-      });
-      return;
-    }
-    if(!window.claude||!window.claude.use){
-      setSch("Conecta una API de IA para leer la foto del horario.");
-      openAIConfig(true);
-      return;
-    }
-    setSch("Leyendo tu horario…");
-    claude.use("sample").then(function(sample){
-      if(!sample)throw{code:"na"};
-      return sample.limits().then(function(l){
-        if(!l||!l.images)throw{code:"na"};
-        return sample.json(buildSchedulePrompt(subjectNames()),{images:file,modelTier:"default"});
-      });
-    }).then(showSched).catch(function(e){
-      setSch(e&&e.code==="not_granted"?"No diste permiso para leer la imagen.":"No pude leer el horario. Prueba con una foto más clara.");
-    });
   }
   function schedTable(items){
     var placed=[],loose=[],mn=1440,mx=0;
@@ -355,9 +347,8 @@ export function createSchedule({ state, ui, save, render, find, limitLine, openP
     });
     pendingSched=null;scheduleReview=null;save();ui.anim.flip=true;render();closeDlg();setSch("Horario guardado.");
   }
-  $("schfile").addEventListener("change",function(){var f=this.files&&this.files[0];this.value="";if(f)readSchedule(f)});
 
 function setSch(t){ui.scheduleMessage=t;var el=$("schmsg");if(el)el.textContent=t}
 
-  return { showSched, openHorList, applyEditSched, openAddSched, applyAddSched, applySched, schedTable, stateRows, requestSchedulePhoto, openAIConfig, applyAIConfig };
+  return { showSched, openHorList, applyEditSched, openAddSched, applyAddSched, applySched, schedTable, stateRows, openAIConfig, applyAIConfig };
 }

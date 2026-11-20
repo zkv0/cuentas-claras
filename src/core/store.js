@@ -3,13 +3,13 @@ import { cleanSubject } from '../domain/subjects.js';
 import { num, uid } from './utils.js';
 import { KEY } from './constants.js';
 
-export const state = { subjects: [], absences: [], sem: { start: '', end: '', pct: '' }, updatedAt: 0 };
-let saved = () => {};
+export const state = { subjects: [], absences: [], sem: { start: '', end: '', pct: '' } };
 
 try {
   const data = JSON.parse(localStorage.getItem(KEY));
   if (data && Array.isArray(data.subjects)) {
-    Object.assign(state, data);
+    const {updatedAt: _oldTimestamp, ...localData} = data;
+    Object.assign(state, localData);
     state.subjects = state.subjects.filter(subject => subject && Array.isArray(subject.rows));
   }
 } catch (error) {
@@ -99,7 +99,6 @@ function normalizeScale() {
 }
 normalizeScale();
 
-export function onSave(callback) { saved = callback; }
 export function find(id) { return state.subjects.find(subject => subject.id === id); }
 
 /** Elimina una materia de la lista y de todas las faltas que la referencian.
@@ -118,17 +117,15 @@ export function save() {
   commitSemester();
   normalizeAbsencePct();
   normalizeScale();
-  state.updatedAt = Date.now();
   try {
     localStorage.setItem(KEY, JSON.stringify(state));
   } catch (error) {
     console.warn('No se pudieron guardar los datos locales.', error);
-    const status = document.getElementById('sync');
+    const status = document.getElementById('saveStatus');
     if (status) {
       status.hidden = false;
-      status.className = 'sync warn';
+      status.className = 'save-status warn';
       status.textContent = 'No se pudo guardar en este dispositivo. Exporta tus datos para conservarlos.';
     }
   }
-  saved();
 }

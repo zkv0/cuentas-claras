@@ -11,9 +11,10 @@ const prompt = [
   'Merge fragments of the same semester and deduplicate courses from overlapping pages. Do not invent data. If this is not a curriculum, return {"semestres":[]}.'
 ].join(' ');
 
-export function createCurriculumImport({state, importCurriculum, refreshSemesters, render, openAIConfig}) {
+export function createCurriculumImport({state, importCurriculum, refreshSemesters, render, adjustAI}) {
   const el = suffix => document.getElementById('curriculum' + suffix);
   const dlg = el('Dlg'), status = el('Status'), review = el('Review'), apply = el('Apply');
+  let files = [];
   let periods = null, reviewedMatches = '', request = 0;
 
   function clearReview() {
@@ -73,19 +74,42 @@ export function createCurriculumImport({state, importCurriculum, refreshSemester
   el('Close').addEventListener('click', close);
   dlg.addEventListener('click', event => { if (event.target === dlg) close(); });
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && !dlg.hidden) close();
+    if (event.key === 'Escape' && !event.defaultPrevented && !dlg.hidden) close();
   });
 
-  el('Config').addEventListener('click', () => { close(); openAIConfig(false); });
+  el('Config').addEventListener('click', () => { close(); adjustAI(openCurriculum); });
   document.getElementById('cuMethod').addEventListener('change', () => {
     request++;
     el('Read').disabled = false;
     clearReview();
   });
-  el('Files').addEventListener('change', () => {
+  const picker = el('Drop');
+  function selectFiles(selection) {
+    const next = Array.from(selection || []);
+    if (!next.length) return;
+    if (next.some(file => !/^image\/(png|jpeg|webp)$/.test(file.type))) {
+      status.textContent = 'Selecciona capturas en PNG, JPG o WebP.';
+      return;
+    }
+    files = next;
     request++;
     el('Read').disabled = false;
     clearReview();
+    el('Name').textContent = files.length === 1 ? files[0].name : files.length + ' capturas seleccionadas';
+    el('Preview').hidden = false;
+    el('Empty').hidden = true;
+  }
+  picker.addEventListener('click', () => el('Files').click());
+  el('Files').addEventListener('change', event => {
+    selectFiles(event.target.files);
+    event.target.value = '';
+  });
+  picker.addEventListener('dragover', event => { event.preventDefault(); picker.classList.add('dragging'); });
+  picker.addEventListener('dragleave', () => picker.classList.remove('dragging'));
+  picker.addEventListener('drop', event => {
+    event.preventDefault();
+    picker.classList.remove('dragging');
+    selectFiles(event.dataTransfer?.files);
   });
 
   el('Read').addEventListener('click', async () => {
@@ -95,8 +119,7 @@ export function createCurriculumImport({state, importCurriculum, refreshSemester
       status.textContent = 'Configura una API con un modelo que pueda leer imágenes.';
       return;
     }
-    const files = [...el('Files').files];
-    if (!files.length || files.some(file => !/^image\/(png|jpeg|webp)$/.test(file.type))) {
+    if (!files.length) {
       status.textContent = 'Selecciona capturas en PNG, JPG o WebP.';
       return;
     }

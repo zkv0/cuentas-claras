@@ -22,27 +22,47 @@ export function exportScheduleImage(state, onError, semesterId = state.activeSem
   const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
   const ctx=canvas.getContext('2d');
   if(!ctx){onError('No se pudo crear la imagen.');return}
-  ctx.fillStyle='#151515';ctx.fillRect(0,0,width,height);
-  ctx.fillStyle='#eeeeee';ctx.font='500 30px Arial';ctx.fillText('Horario · '+(semester?.name||'Semestre'),32,52,width-64);
-  ctx.font='20px Arial';ctx.fillStyle='#bdbdbd';
+
+  const theme = getComputedStyle(document.documentElement);
+  const color = name => theme.getPropertyValue(name).trim();
+  const background = color('--bg');
+  const ink = color('--ink');
+  const muted = color('--muted');
+  const lineColor = color('--line');
+  const blockBackground = color('--strong-surface') || color('--surface3');
+  const typeface = color('--ui-typeface') || 'Arial';
+  const radius = parseFloat(color('--schedule-radius')) || 0;
+  const stroke = parseFloat(color('--custom-stroke')) || 0;
+  ctx.fillStyle=background;ctx.fillRect(0,0,width,height);
+  ctx.fillStyle=ink;ctx.font='500 30px '+typeface;ctx.fillText('Horario · '+(semester?.name||'Semestre'),32,52,width-64);
+  ctx.font='20px '+typeface;ctx.fillStyle=color('--custom-text') || color('--accent');
   days.forEach((day,i)=>ctx.fillText(day,left+i*col+12,120));
+  ctx.strokeStyle=lineColor;
   for(let h=low;h<=high;h++){
-    const y=top+(h-low)*hour;ctx.strokeStyle='#333333';ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(left+7*col,y);ctx.stroke();
-    ctx.fillStyle='#aaaaaa';ctx.font='16px Arial';ctx.fillText(fm(h*60),24,y+6);
+    const y=top+(h-low)*hour;ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(left+7*col,y);ctx.stroke();
+    ctx.fillStyle=muted;ctx.font='16px '+typeface;ctx.fillText(fm(h*60),24,y+6);
   }
-  for(let d=0;d<=7;d++){ctx.strokeStyle='#333333';ctx.beginPath();ctx.moveTo(left+d*col,top);ctx.lineTo(left+d*col,top+(high-low)*hour);ctx.stroke()}
+  for(let d=0;d<=7;d++){ctx.beginPath();ctx.moveTo(left+d*col,top);ctx.lineTo(left+d*col,top+(high-low)*hour);ctx.stroke()}
   blocks.forEach(b=>{
     const x=left+order.indexOf(b.day)*col+3,y=top+(b.start/60-low)*hour+2,h=(b.end-b.start)/60*hour-4;
-    ctx.fillStyle='#303030';ctx.fillRect(x,y,col-6,h);
+    ctx.fillStyle=blockBackground;
+    if (radius || stroke) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(x,y,col-6,Math.max(1,h),radius);
+      ctx.fill();
+      if (stroke) { ctx.lineWidth=stroke;ctx.stroke(); }
+      ctx.restore();
+    } else ctx.fillRect(x,y,col-6,h);
     ctx.save();ctx.beginPath();ctx.rect(x+6,y+2,col-18,h-4);ctx.clip();
-    ctx.fillStyle='#cccccc';ctx.font='15px Arial';ctx.fillText(fm(b.start)+' – '+fm(b.end),x+9,y+19);
-    ctx.fillStyle='#ffffff';ctx.font='18px Arial';
+    ctx.fillStyle=muted;ctx.font='15px '+typeface;ctx.fillText(fm(b.start)+' - '+fm(b.end),x+9,y+19);
+    ctx.fillStyle=ink;ctx.font='18px '+typeface;
     let line='',row=0;for(const word of b.name.split(/\s+/)){
       const next=line?line+' '+word:word;
       if(ctx.measureText(next).width>col-28&&line){ctx.fillText(line,x+9,y+43+row*22,col-28);row++;line=word}else line=next;
     }ctx.fillText(line,x+9,y+43+row*22,col-28);ctx.restore();
   });
-  ctx.font='18px Arial';ctx.fillStyle='#bdbdbd';loose.forEach((text,i)=>ctx.fillText(text,32,top+(high-low)*hour+35+i*30,width-64));
+  ctx.font='18px '+typeface;ctx.fillStyle=muted;loose.forEach((text,i)=>ctx.fillText(text,32,top+(high-low)*hour+35+i*30,width-64));
   canvas.toBlob(blob=>{
     if(!blob){onError('No se pudo crear la imagen.');return}
     const url=URL.createObjectURL(blob),link=document.createElement('a');

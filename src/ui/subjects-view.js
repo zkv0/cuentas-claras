@@ -21,20 +21,21 @@ export function createSubjectsView({ state, ui, open, open2, find, allowed, falt
       if(go){h+='<div class="grpbody">';gi.forEach(function(i){h+=rowHtml(sub.rows[i],i,true)});h+='</div>'}
     }
     oi.forEach(function(i){h+=rowHtml(sub.rows[i],i,false)});
-    return h+'<div class="actions"><button data-act="addRow">Agregar evaluación</button><button class="ghost" data-act="archive">'+(sub.archived?"Restaurar":"Archivar")+'</button><button class="ghost" data-act="delSub">Eliminar materia</button></div></div>';
+    return h+'<div class="actions"><button data-act="addRow">Agregar nota</button><button class="ghost" data-act="archive">'+(sub.archived?"Restaurar":"Archivar")+'</button><button class="ghost" data-act="delSub">Eliminar materia</button></div></div>';
   }
   function cardHtml(sub){
     var o=!!open[sub.id],ro=ui.reorderId===sub.id;
+    const absenceBadge = sub.days?.length ? '<span class="fbox"></span>' : '';
     var name='<input class="n name subject-name" data-k="name" aria-label="Nombre de la materia" placeholder="Nombre de la materia" value="'+esc(sub.name)+'">';
     return '<section class="card'+(o&&!ro?" open":"")+(ro?" reorder":"")+'" data-id="'+sub.id+'">'+
         (ro?'<div class="item ro"><span class="t">'+name+'<span class="m"></span></span><span class="chip"></span><span class="mv"><button class="ghost" data-act="move" data-dir="-1" aria-label="Subir">↑</button><button class="ghost" data-act="move" data-dir="1" aria-label="Bajar">↓</button><button class="p" data-act="doneReorder">Listo</button></span></div>'
-          :'<div class="item" data-toggle aria-expanded="'+o+'"><span class="t">'+name+'<span class="m"></span></span><span class="fbox"></span><span class="chip"></span><span class="chev">›</span></div>'+(o?bodyHtml(sub):""))+
+          :'<div class="item" data-toggle aria-expanded="'+o+'"><span class="t">'+name+'<span class="m"></span></span>'+absenceBadge+'<span class="chip"></span><span class="chev">›</span></div>'+(o?bodyHtml(sub):""))+
         '</section>';
   }
   function renderRaw(){
     var app=document.getElementById("app");
     var act=state.subjects.filter(function(x){return !x.archived}),arc=state.subjects.filter(function(x){return x.archived}),h="";
-    if(!state.subjects.length)h='<div class="empty"><p>Aún no tienes materias.</p><div class="empty-acts"><button class="p" data-act="openOnboard">Subir foto de horario con IA</button><button class="ghost" data-act="addSched">Agregar horario a mano</button></div></div>';
+    if(!state.subjects.length)h='<div class="empty"><p>Aún no tienes materias.</p><div class="empty-acts"><button class="p" data-act="addSched">Añadir materia</button><button class="ghost" data-act="openOnboard">Subir horario con IA</button></div></div>';
     else{
       h=faltHtml()+(act.length?act.map(cardHtml).join(""):'<div class="empty">No tienes materias activas.</div>');
       if(arc.length){
@@ -65,10 +66,16 @@ export function createSubjectsView({ state, ui, open, open2, find, allowed, falt
     var c=calc(sub),ch=chip(c);
     var nameInput=card.querySelector(".subject-name");
     if(nameInput&&document.activeElement!==nameInput)nameInput.value=sub.name;
-    var fc=state.absences.filter(function(a){return a.ids.indexOf(sub.id)>=0}).length,mx=allowed(sub),mEl=card.querySelector(".m");
+    var mEl=card.querySelector(".m");
     mEl.textContent=(sub.cancelled?"Cancelada":ch.t)+" · "+f(c.graded)+"% evaluado";
     mEl.classList.toggle("warn",ch.cls==="bad");
-    var fb=card.querySelector(".fbox");if(fb){fb.textContent=fc+(mx!==null?"/"+mx:"")+(fc===1&&mx===null?" falta":" faltas");fb.classList.toggle("warn",mx!==null&&fc>mx)}
+    const fb = card.querySelector('.fbox');
+    if (fb) {
+      const count = state.absences.filter(absence => absence.ids.includes(sub.id)).length;
+      const max = allowed(sub);
+      fb.textContent = count + (max !== null ? '/' + max : '') + (count === 1 && max === null ? ' falta' : ' faltas');
+      fb.classList.toggle('warn', max !== null && count > max);
+    }
     var cp=card.querySelector(".chip");cp.className="chip"+(c.earned>=c.min?" ok":"");cp.textContent=f(c.earned);
     var gm=card.querySelector(".gm");
     if(gm){var gc=sub.rows.filter(isGraded).length;gm.textContent=gc+(gc===1?" evaluación":" evaluaciones")+" · "+f(c.graded)+"% · acumulado "+f(c.earned)}

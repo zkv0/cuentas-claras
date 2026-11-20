@@ -109,41 +109,6 @@ test('permite un servidor local sin clave y sin modo JSON', async () => {
   }
 });
 
-test('usa el formato de Anthropic y sus cabeceras', async () => {
-  const original = globalThis.fetch;
-  let captured = null;
-  globalThis.fetch = async (url, options) => {
-    captured = { url, options };
-    return {
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify({ content: [{ type: 'text', text: '{"materias":[]}' }] }),
-    };
-  };
-  try {
-    const result = await readScheduleImage(
-      'data:image/jpeg;base64,BBBB',
-      { provider: 'anthropic', apiKey: 'sk-ant', baseUrl: 'https://api.anthropic.com', model: 'claude-sonnet-4-5' },
-      'Extrae el horario en JSON.',
-    );
-    assert.deepEqual(result, { materias: [] });
-    assert.equal(captured.url, 'https://api.anthropic.com/v1/messages');
-    assert.equal(captured.options.headers['x-api-key'], 'sk-ant');
-    assert.equal(captured.options.headers['anthropic-version'], '2023-06-01');
-    assert.equal(captured.options.headers['anthropic-dangerous-direct-browser-access'], 'true');
-    const body = JSON.parse(captured.options.body);
-    assert.equal(body.model, 'claude-sonnet-4-5');
-    assert.equal(body.response_format, undefined);
-    assert.equal(body.messages[0].content[0].type, 'text');
-    assert.deepEqual(body.messages[0].content[1], {
-      type: 'image',
-      source: { type: 'base64', media_type: 'image/jpeg', data: 'BBBB' },
-    });
-  } finally {
-    globalThis.fetch = original;
-  }
-});
-
 test('traduce los errores de autenticación', async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => ({

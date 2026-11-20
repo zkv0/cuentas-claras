@@ -39,14 +39,12 @@ test('elimina la materia y sus referencias de todas las faltas', () => {
     { id: 'y', date: '2026-11-17', ids: ['a'] },
     { id: 'z', date: '2026-11-18', ids: ['b'] },
   ];
-  state.updatedAt = 0;
   removeSubject('a');
   assert.deepEqual(state.subjects.map(subject => subject.id), ['b']);
   assert.deepEqual(state.absences, [
     { id: 'x', date: '2026-11-16', ids: ['b'] },
     { id: 'z', date: '2026-11-18', ids: ['b'] },
   ]);
-  assert.ok(state.updatedAt > 0);
   assert.equal(JSON.parse(memory.get('calc-notas-v2')).subjects.length, 1);
 });
 
