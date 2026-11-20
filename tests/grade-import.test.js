@@ -20,7 +20,7 @@ test('lee créditos visibles y los utiliza en el promedio ponderado', () => {
   assert.equal(cleanSubject(plan.subjects[0]).credits,'4');
   const prompt=buildGradesPrompt([subject()]);
   assert.match(prompt,/"creditos":null/);
-  assert.match(prompt,/leyenda/);
+  assert.match(prompt,/literal legend/);
 });
 
 test('créditos ausentes conservan los existentes y créditos inválidos impiden cambios', () => {

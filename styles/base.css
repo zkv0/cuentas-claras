@@ -1,14 +1,22 @@
 /* Estructura, tokens iniciales y distribución adaptable. */
 :root{color-scheme:dark;--bg:#000000;--ink:#e8e8e8;--muted:#808080;--line:#1f1f1f;--done:#161616;--done-ink:#d0d0d0;--need:#2a2a2a;--need-ink:#ffffff;--need-line:#707070;--bad:#1c1010;--bad-ink:#e2a4a4;--ok:#101a13;--ok-ink:#a9d6b8;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-html{scroll-padding-top:env(safe-area-inset-top,0px);background:#000}
+html{scroll-padding-top:env(safe-area-inset-top,0px);background:var(--bg)}
 *{box-sizing:border-box}
+*{scrollbar-width:thin;scrollbar-color:var(--accent) transparent}
+@supports selector(::-webkit-scrollbar){
+  *{scrollbar-width:auto;scrollbar-color:auto}
+  ::-webkit-scrollbar{width:4px;height:4px}
+  ::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
+  ::-webkit-scrollbar-thumb{background:var(--accent);border-radius:4px}
+}
+@media (forced-colors:active){*{scrollbar-color:auto}}
 [hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--ink);line-height:1.45}
 main{max-width:760px;margin:0 auto;padding:24px 16px 64px}
 
 .top{display:flex;justify-content:space-between;gap:12px;margin-bottom:20px}
 button{font:inherit;cursor:pointer}
-button.p{border-color:var(--accent);font-weight:600}
+button.p{border-color:var(--accent);font-weight:500}
 
 input{font:inherit;color:var(--ink);min-width:0}
 input:focus-visible,button:focus-visible{outline:0;outline-offset:2px}
@@ -37,7 +45,7 @@ input:focus-visible,button:focus-visible{outline:0;outline-offset:2px}
 .row input{width:100%}
 .needwrap{visibility:hidden}
 .row.pending .needwrap{visibility:visible}
-.row.pending input.pred{background:#0a0a0a;color:var(--need-ink);border-color:var(--need-line);font-weight:700}
+.row.pending input.pred{background:var(--input-inset,#0a0a0a);color:var(--need-ink);border-color:var(--need-line);font-weight:600}
 .row.pending input.pred.locked{border-color:var(--accent);box-shadow:none}
 .row.pending input.pred.bad{color:var(--bad-ink);border-color:var(--bad-ink)}
 .grp{display:flex;align-items:center;gap:10px;width:100%;text-align:left;margin:4px 0 8px;border-color:var(--line);color:var(--done-ink)}
@@ -51,7 +59,7 @@ input:focus-visible,button:focus-visible{outline:0;outline-offset:2px}
 .row.compact.pending .needwrap{display:block}
 .row.compact.pending .needwrap label{display:block}
 .item{user-select:none;cursor:pointer}
-.item.ro{cursor:default;background:#0d0d0d}
+.item.ro{cursor:default;background:var(--input-inset,#0d0d0d)}
 .mv{display:flex;gap:6px;align-items:center}
 .mv button{padding:6px 10px}
 .card.reorder{border-color:#555}

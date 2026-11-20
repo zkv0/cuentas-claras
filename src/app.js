@@ -1,13 +1,14 @@
+import { createCurriculumImport } from './features/curriculum-import.js';
 import { createGradeImport } from './features/grade-import.js';
 import { exportScheduleImage } from './features/schedule-image.js';
 import { searchSubjects } from './domain/search.js';
 import { createSubjectsView } from './ui/subjects-view.js';
 import { createMotion } from './ui/motion.js';
-import { state, save, find, onSave, removeSubject, removeSemester, addSemester, switchSemester, initializeSemesters, commitSemester } from './core/store.js';
+import { state, save, find, onSave, removeSubject, removeSemester, addSemester, switchSemester, initializeSemesters, commitSemester, importCurriculum } from './core/store.js';
 import { uid, num, f, esc } from './core/utils.js';
 import { DIAS, MESES, ONBOARD_KEY } from './core/constants.js';
 import { classCount as countClasses, allowed as allowedAbsences } from './domain/attendance.js';
-import { cleanSubject, applySubjectSnapshot } from './domain/subjects.js';
+import { cleanSubject, applySubjectSnapshot, subjectSnapshot } from './domain/subjects.js';
 import { createSchedule } from './features/schedule.js';
 import { createOnboarding } from './features/onboarding.js';
 import { createQrTransfer } from './features/qr-transfer.js';
@@ -15,9 +16,37 @@ import { isAIConfigured, saveAIConfig, clearAIConfig } from './services/ai.js';
 import { createSync } from './services/sync.js';
 
 // Estado efímero de interfaz; los datos persistentes pertenecen a core/store.js.
-const ui = { anim: {}, dialogMode: '', scheduleMessage: '', reorderAll: false, reorderId: null, archOpen: false };
+const ui = { anim: {}, dialogMode: '', scheduleMessage: '', reorderId: null, archOpen: false };
 const open = {}, open2 = {};
 let pendingSemesterDeletion = null;
+let gradeSettingsDraft = null;
+const themes = [
+  ['default', 'Grafito (predeterminado)'],
+  ['rose', 'Algodón de fresa'],
+  ['red', 'Asfalto carmesí'],
+  ['white', 'Porcelana'],
+  ['blue', 'Marea azul'],
+  ['eclipse', 'Eclipse total'],
+  ['jade', 'Bosque de jade'],
+  ['amber', 'Ámbar del desierto']
+];
+const themeKey = 'cuentas-claras-theme';
+let currentTheme = 'default';
+const typefaces = [
+  ['atkinson', 'Atkinson Hyperlegible Next (predeterminada)'],
+  ['source-sans', 'Source Sans 3'],
+  ['inter', 'Inter'],
+  ['lexend', 'Lexend'],
+  ['lora', 'Lora'],
+  ['plex-mono', 'IBM Plex Mono'],
+  ['barlow-condensed', 'Barlow Condensed'],
+  ['fraunces', 'Fraunces'],
+  ['nunito', 'Nunito'],
+  ['space-grotesk', 'Space Grotesk']
+];
+const typefaceKey = 'cuentas-claras-typeface';
+const defaultTypeface = 'atkinson';
+let currentTypeface = defaultTypeface;
 const classCount = sub => countClasses(sub, state.sem);
 const allowed = sub => allowedAbsences(sub, state.sem);
 
@@ -38,7 +67,7 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     if(e.target.closest('[data-act="addFalta"]')){openCal();return}
     if(e.target.closest('.attendance-shortcut')){openAttendance('absences');return}
     var t=e.target.closest("[data-toggle]");
-    if(t&&!ui.reorderAll){
+    if(t){
       var tid=t.closest(".card").dataset.id;
       if(e.detail>=2)ui.reorderId=tid; // doble clic: entra a modo reordenar
       if(e.detail<2&&open[tid]){var cd=t.closest(".card");shrink(cd.querySelector(".body"),cd.querySelector(".chev"),function(){open[tid]=false;render()});return}
@@ -55,16 +84,22 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     if(b.hasAttribute("data-toggle2")){var sid=sub.id;if(open2[sid]){shrink(card.querySelector(".grpbody"),card.querySelector(".grp .chev"),function(){open2[sid]=false;render()});return}open2[sid]=true;ui.anim.grp=sid;render();return}
     if(a==="addSemester"||a==="renameSemester"){openSemesterSettings(a==="renameSemester");return}
     if(a==="deleteSemester"){openDeleteSemester();return}
-    if(a==="updateGradesAI"){openGradeImport();return}
+    if(a==="importCurriculum"){closeDlg();openCurriculum();return}
+    if(a==="updateGradesAI"){closeDlg();openGradeImport();return}
+    if(a==="uploadScheduleAI"){closeDlg();openOnboarding();return}
     if(a==="searchSubjects"){openSearch();return}
     if(a==="searchResult"){openSearchResult(b.dataset.semester,b.dataset.subject);return}
     if(a==="gradeSettings"){openGradeSettings();return}
+    if(a==="typography"){openTypography();return}
+    if(a==="selectTypeface"&&ui.dialogMode==='typography'){selectTypeface(b.dataset.typefaceOption);return}
+    if(a==="themes"){openThemes();return}
+    if(a==="selectTheme"&&ui.dialogMode==='themes'){selectTheme(b.dataset.theme);return}
     if(a==="export"){openDlg("export");return}
     if(a==="import"){openDlg("import");return}
     if(a==="wipeAll"){openWipe();return}
     if(a==="openOnboard"){openOnboarding();return}
-    if(a==="reorderAll"){ui.reorderAll=!ui.reorderAll;ui.reorderId=null;ui.anim.flip=true;render();return}
-    if(a==="doneReorder"){ui.reorderId=null;ui.reorderAll=false;ui.anim.flip=true;render();return}
+    if(a==="addSched"){openAddSched();return}
+    if(a==="doneReorder"){ui.reorderId=null;ui.anim.flip=true;render();return}
     if(a==="move"&&sub){
       var ix=state.subjects.indexOf(sub),dr=+b.dataset.dir,jx=ix+dr;
       while(jx>=0&&jx<state.subjects.length&&!!state.subjects[jx].archived!==!!sub.archived)jx+=dr;
@@ -73,14 +108,10 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     }
     if(a==="exportScheduleImage"){exportScheduleImage(state,function(msg){ui.scheduleMessage=msg;var el=$("schmsg");if(el)el.textContent=msg});return}
     if(a==="exportSettingsSchedule"){
-      const message = $('dmsg');
-      message.textContent = '';
-      const semesterId = state.semesters.length > 1 ? $('exportScheduleSemester').value : state.activeSemesterId;
-      exportScheduleImage(state, error => { message.textContent = error; }, semesterId);
+      if(state.semesters.length > 1) openScheduleExport();
+      else downloadSettingsSchedule(state.activeSemesterId);
       return;
     }
-    if(a==="uploadSch"){requestSchedulePhoto();return}
-    if(a==="addSched"){openAddSched();return}
     if(a==="aiConfig"){openAIConfig();return}
     if(a==="editHorario"){openHorList();return}
     if(a==="delFalta"){var fid=b.dataset.fid;state.absences=state.absences.filter(function(x){return x.id!==fid});save();render();return}
@@ -101,39 +132,55 @@ const allowed = sub => allowedAbsences(sub, state.sem);
   });
 
   function $(id){return document.getElementById(id)}
+  function openPanel(mode, {title, description='', body='', confirm='', dismiss='Cerrar', danger=false}){
+    ui.dialogMode=mode;
+    $('dt').textContent=title;
+    $('dp').textContent=description;
+    $('dta').hidden=true;
+    $('dtab').innerHTML=body;
+    $('dtab').hidden=!body;
+    $('dqrexport').hidden=true;
+    $('dqrimport').hidden=true;
+    $('dmsg').textContent='';
+    $('dgo').textContent=confirm;
+    $('dgo').hidden=!confirm;
+    $('dgo').className=danger?'p danger':'p';
+    $('dx').textContent=dismiss;
+    $('dlg').hidden=false;
+  }
   function refreshSemesters(){
     $('semesterSelect').innerHTML=state.semesters.map(function(x){return '<option value="'+esc(x.id)+'"'+(x.id===state.activeSemesterId?' selected':'')+'>'+esc(x.name)+'</option>'}).join('');
   }
   function resetSemesterUI(){
     Object.keys(open).forEach(k=>delete open[k]);Object.keys(open2).forEach(k=>delete open2[k]);
-    ui.scheduleMessage='';ui.archOpen=false;ui.reorderAll=false;ui.reorderId=null;
+    ui.scheduleMessage='';ui.archOpen=false;ui.reorderId=null;
     refreshSemesters();render();
   }
   $('semesterSelect').addEventListener('change',function(){switchSemester(this.value);resetSemesterUI()});
   function openDeleteSemester(){
     const semester=state.semesters.find(x=>x.id===state.activeSemesterId);
     if(!semester)return;
-    pendingSemesterDeletion=semester.id;ui.dialogMode='deleteSemester';
-    $('dt').textContent='¿Deseas eliminar el semestre «'+semester.name+'»?';
-    $('dp').textContent='Se eliminarán sus materias, notas, horario y faltas de asistencia. Esta acción no se puede deshacer.'+(state.semesters.length===1?' Se creará un semestre vacío para continuar.':'');
-    $('dta').hidden=true;$('dtab').hidden=true;$('dtab').innerHTML='';
-    $('dqrexport').hidden=true;$('dqrimport').hidden=true;$('dmsg').textContent='';
-    $('dgo').hidden=false;$('dgo').className='p danger';$('dgo').textContent='Eliminar semestre';
-    $('dx').textContent='Cancelar';$('dlg').hidden=false;$('dx').focus();
+    pendingSemesterDeletion=semester.id;
+    openPanel('deleteSemester', {
+      title:'¿Deseas eliminar el semestre «'+semester.name+'»?',
+      description:'Se eliminarán sus materias, notas, horario y faltas de asistencia. Esta acción no se puede deshacer.'+(state.semesters.length===1?' Se creará un semestre vacío para continuar.':''),
+      confirm:'Eliminar semestre', dismiss:'Cancelar', danger:true
+    });
+    $('dx').focus();
   }
   function applyDeleteSemester(){
     if($('dlg').hidden||!pendingSemesterDeletion)return;
     removeSemester(pendingSemesterDeletion);
-    closeDlg();ui.dialogMode='';resetSemesterUI();
+    closeDlg();resetSemesterUI();
   }
   function openSemesterSettings(rename){
-    ui.dialogMode=rename?'renameSemester':'addSemester';
-    $('dt').textContent=rename?'Renombrar semestre':'Nuevo semestre';$('dp').textContent='';
-    $('dta').hidden=true;$('dtab').hidden=false;
     var current=state.semesters.find(x=>x.id===state.activeSemesterId);
-    $('dtab').innerHTML='<div class="dsform semester-form"><label>Nombre<input id="semesterName" maxlength="60" placeholder="Ej. 2027-1" value="'+esc(rename?current.name:'')+'"></label>'+(!rename?'<div class="semester-dates"><label>Inicio<input id="semesterStart" type="date" aria-label="Inicio del semestre"></label><label>Fin<input id="semesterEnd" type="date" aria-label="Fin del semestre"></label></div>':'')+'</div>';
-    $('dqrexport').hidden=true;$('dqrimport').hidden=true;$('dmsg').textContent='';
-    $('dgo').hidden=false;$('dgo').textContent=rename?'Guardar':'Crear';$('dlg').hidden=false;$('semesterName').focus();
+    openPanel(rename?'renameSemester':'addSemester', {
+      title:rename?'Renombrar semestre':'Nuevo semestre',
+      body:'<div class="dsform semester-form"><label>Nombre<input id="semesterName" maxlength="60" placeholder="Ej. 2027-1" value="'+esc(rename?current.name:'')+'"></label>'+(!rename?'<div class="semester-dates"><label>Inicio<input id="semesterStart" type="date" aria-label="Inicio del semestre"></label><label>Fin<input id="semesterEnd" type="date" aria-label="Fin del semestre"></label></div>':'')+'</div>',
+      confirm:rename?'Guardar':'Crear'
+    });
+    $('semesterName').focus();
   }
   function applySemesterSettings(){
     var name=$('semesterName').value.trim();
@@ -150,19 +197,20 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     closeDlg();resetSemesterUI();
   }
   function openSearch(){
-    commitSemester();ui.dialogMode='search';
-    $('dt').textContent='Buscar materias';$('dp').textContent='';
-    $('dta').hidden=true;$('dtab').hidden=false;
-    $('dtab').innerHTML='<div class="subject-search"><input id="subjectSearch" type="search" autocomplete="off" placeholder="Nombre de la materia" aria-label="Buscar materia en todos los semestres"><div id="subjectSearchResults" aria-live="polite"><p class="m search-empty">Busca en todos los semestres.</p></div></div>';
-    $('dgo').hidden=true;$('dqrexport').hidden=true;$('dqrimport').hidden=true;$('dmsg').textContent='';
-    $('dlg').hidden=false;$('subjectSearch').focus();
+    commitSemester();
+    openPanel('search', {
+      title:'Buscar materias',
+      body:'<div class="subject-search"><input id="subjectSearch" type="search" autocomplete="off" placeholder="Nombre de la materia" aria-label="Buscar materia en todos los semestres"><div id="subjectSearchResults" aria-live="polite"><p class="m search-empty">Busca en todos los semestres.</p></div></div>'
+    });
+    $('subjectSearch').focus();
   }
   document.addEventListener('input',function(e){
     if(e.target.id!=='subjectSearch'||ui.dialogMode!=='search')return;
     var query=e.target.value,results=searchSubjects(state.semesters,query);
-    $('subjectSearchResults').innerHTML=!query.trim()?'<p class="m search-empty">Busca en todos los semestres.</p>':!results.length?'<p class="m search-empty">Sin resultados.</p>':results.map(function(x){
-      return '<button type="button" class="search-result" data-act="searchResult" data-semester="'+esc(x.semesterId)+'" data-subject="'+esc(x.subjectId)+'"><span><span class="search-result-name">'+esc(x.name)+'</span><span class="search-result-semester">'+esc(x.semesterName)+(x.archived?' · Archivada':'')+'</span></span><span aria-hidden="true">›</span></button>';
-    }).join('');
+    $('subjectSearchResults').innerHTML=!query.trim()?'<p class="m search-empty">Busca en todos los semestres.</p>':!results.length?'<p class="m search-empty">Sin resultados.</p>':
+      '<div class="settings-options">'+results.map(function(x){
+        return '<button type="button" class="settings-option" data-act="searchResult" data-semester="'+esc(x.semesterId)+'" data-subject="'+esc(x.subjectId)+'"><span>'+esc(x.name)+'<small class="search-result-semester">'+esc(x.semesterName)+(x.archived?' · Archivada':'')+'</small></span><span aria-hidden="true">›</span></button>';
+      }).join('')+'</div>';
   });
   function openSearchResult(semesterId,subjectId){
     var semester=state.semesters.find(x=>x.id===semesterId);
@@ -172,16 +220,122 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     var card=document.querySelector('.card[data-id="'+subjectId+'"]');
     if(card){card.scrollIntoView({block:'center'});var input=card.querySelector('.name');if(input)input.focus({preventScroll:true})}
   }
-  function openGradeSettings(){
-    const schedulePicker = state.semesters.length > 1
-      ? `<label class="dsform settings-schedule-picker">Semestre del horario<select id="exportScheduleSemester">${$('semesterSelect').innerHTML}</select></label>`
-      : '';
-    ui.dialogMode='gradeSettings';
-    $('dt').textContent='Ajustes globales';$('dp').textContent='Se aplica a todos los semestres.';
-    $('dta').hidden=true;$('dtab').hidden=false;
-    $('dtab').innerHTML='<div class="dsform compact-global-settings"><div class="grade-scale-row"><label>Nota mínima<input id="globalMin" inputmode="decimal" value="'+esc(state.gradeScale.min)+'"></label><label>Nota máxima<input id="globalMax" inputmode="decimal" value="'+esc(state.gradeScale.max)+'"></label></div><label>% máximo de faltas<input id="globalAbsencePct" inputmode="decimal" placeholder="Ej. 20" value="'+esc(state.absencePct)+'"></label></div><section class="settings-data" aria-labelledby="settingsScheduleTitle"><h3 id="settingsScheduleTitle">Horario</h3>'+schedulePicker+'<div class="settings-options"><button type="button" class="settings-option" data-act="exportSettingsSchedule"><span>Descargar imagen del horario</span><span aria-hidden="true">&#8595;</span></button></div></section><div class="settings-data"><h3>Datos</h3><div class="settings-options"><button type="button" class="settings-option" data-act="export"><span>Exportar datos</span><span aria-hidden="true">›</span></button><button type="button" class="settings-option" data-act="import"><span>Importar datos</span><span aria-hidden="true">›</span></button><button type="button" class="settings-option settings-delete" data-act="wipeAll"><span>Borrar datos</span><span aria-hidden="true">›</span></button></div></div>';
-    $('dqrexport').hidden=true;$('dqrimport').hidden=true;$('dmsg').textContent='';
-    $('dgo').hidden=false;$('dgo').className='p';$('dgo').textContent='Guardar';$('dlg').hidden=false;$('globalMin').focus();
+  function settingsIcon(path){
+    return `<svg class="settings-icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
+  }
+  const downloadIcon='M12 3v12m-5-5 5 5 5-5M5 16v4h14v-4';
+  function settingsOptions(actions){
+    return `<div class="settings-options">${actions.map(([action, label, icon]) => `
+      <button type="button" class="settings-option${action==='wipeAll'?' settings-delete':''}" data-act="${action}">
+        ${settingsIcon(icon)}<span>${label}</span><span aria-hidden="true">›</span>
+      </button>`).join('')}</div>`;
+  }
+  function openGradeSettings(draft){
+    const { min, max, absencePct } = draft ?? { ...state.gradeScale, absencePct: state.absencePct };
+    const body=`<div class="global-settings">
+    <section aria-labelledby="settingsLimitsTitle">
+    <h3 id="settingsLimitsTitle">${settingsIcon('M5 18v-4m7 4v-8m7 8V6')}Notas y faltas</h3>
+    <div class="dsform compact-global-settings">
+      <label>Nota mínima<input id="globalMin" inputmode="decimal" value="${esc(min)}"></label>
+      <label>Nota máxima<input id="globalMax" inputmode="decimal" value="${esc(max)}"></label>
+      <label>% máx. de faltas<input id="globalAbsencePct" inputmode="decimal" value="${esc(absencePct)}"></label>
+    </div>
+    </section>
+    <section aria-labelledby="settingsScheduleTitle">
+    <h3 id="settingsScheduleTitle">${settingsIcon('M4 5h16v15H4zM4 10h16M8 3v4m8-4v4')}Horario</h3>
+    ${settingsOptions([['exportSettingsSchedule', 'Descargar imagen del horario', downloadIcon]])}
+    </section>
+    <section aria-labelledby="settingsAppearanceTitle">
+    <h3 id="settingsAppearanceTitle">${settingsIcon('M5 6h14v10H5zm3 14h8m-4-4v4')}Apariencia</h3>
+    ${settingsOptions([['themes', 'Temas', 'M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-4 1.5 1.5 0 0 1 1-2.5h2A4 4 0 0 0 21 10c-1-4-5-7-9-7zM7 10h.01M10 7h.01M14 7h.01M17 10h.01'], ['typography', 'Tipografía', 'M4 19 10 5l6 14m-10-4h8m3 4 3-8 3 8m-5-2h4']])}
+    </section>
+    <section aria-labelledby="settingsAITitle">
+    <h3 id="settingsAITitle">${settingsIcon('M12 3l2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4z')}Inteligencia artificial</h3>
+    ${settingsOptions([
+      ['updateGradesAI', 'Actualizar notas con IA', 'M6 3h12v18H6zM9 8h6m-6 4h6m-6 4h3'],
+      ['importCurriculum', 'Importar malla curricular', 'M4 4h16v16H4zM4 9h16M9 9v11M14 9v11'],
+      ['uploadScheduleAI', 'Subir horario con IA', 'M4 8h16v12H4zM8 8V4m8 4V4m-7 9h6m-6 3h3'],
+      ['aiConfig', isAIConfigured() ? 'Gestionar API de IA' : 'Conectar API de IA', 'M8 3v5m8-5v5M6 8h12v3a6 6 0 0 1-12 0zm6 9v4']
+    ])}
+    </section>
+    <section aria-labelledby="settingsDataTitle">
+    <h3 id="settingsDataTitle">${settingsIcon('M4 7h16v13H4zM3 4h18v3H3zm7 7h4')}Datos</h3>
+    ${settingsOptions([
+      ['export', 'Exportar datos', 'M12 15V3m-5 5 5-5 5 5M5 15v5h14v-5'],
+      ['import', 'Importar datos', downloadIcon],
+      ['wipeAll', 'Borrar datos', 'M4 6h16m-14 0 1 14h10l1-14M9 6V3h6v3m-5 4v6m4-6v6']
+    ])}
+    </section>
+    </div>`;
+    openPanel('gradeSettings', {title:'Configuración de Cuentas Claras', body, confirm:'Guardar'});
+    $('dtab').querySelector('[data-act="exportSettingsSchedule"]')?.focus();
+  }
+  function openScheduleExport(){
+    rememberGradeSettings();
+    openPanel('scheduleExport', {
+      title:'Descargar horario',
+      body:`<label class="settings-schedule-picker">Semestre<select id="exportScheduleSemester">${$('semesterSelect').innerHTML}</select></label>`,
+      confirm:'Descargar', dismiss:'Volver'
+    });
+    $('exportScheduleSemester').focus();
+  }
+  function rememberGradeSettings(){
+    gradeSettingsDraft = { min: $('globalMin').value, max: $('globalMax').value, absencePct: $('globalAbsencePct').value };
+  }
+  function applyTheme(theme){
+    currentTheme=themes.some(([id])=>id===theme)?theme:'default';
+    document.documentElement.dataset.theme=currentTheme;
+    const meta=document.querySelector('meta[name="theme-color"]');
+    if(meta)meta.content=getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  }
+  function openThemes(){
+    rememberGradeSettings();
+    const options=themes.map(([id,label])=>`
+      <button type="button" class="settings-option theme-option" data-act="selectTheme" data-theme="${id}" aria-pressed="${id===currentTheme}">
+        <span class="theme-preview" data-theme-preview="${id}" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>${label}</span><span class="theme-check" aria-hidden="true">✓</span>
+      </button>`).join('');
+    openPanel('themes', {title:'Temas', body:`<div class="settings-options">${options}</div>`, dismiss:'Volver'});
+    $('dtab').querySelector('[aria-pressed="true"]')?.focus();
+  }
+  function selectTheme(theme){
+    applyTheme(theme);
+    try{localStorage.setItem(themeKey,currentTheme)}catch{}
+    $('dtab').querySelectorAll('[data-act="selectTheme"]').forEach(button=>{
+      button.setAttribute('aria-pressed',String(button.dataset.theme===currentTheme));
+    });
+  }
+  function applyTypeface(id){
+    currentTypeface = typefaces.some(([key]) => key === id) ? id : defaultTypeface;
+    document.documentElement.dataset.typeface = currentTypeface;
+  }
+  function openTypography(){
+    rememberGradeSettings();
+    const options = typefaces.map(([id,label]) => `
+      <button type="button" class="settings-option typeface-option" data-act="selectTypeface"
+        data-typeface-option="${id}" aria-pressed="${id === currentTypeface}">
+        <span>${label}</span><span class="typeface-check" aria-hidden="true">✓</span>
+      </button>`).join('');
+    openPanel('typography', {title:'Tipografía', body:`<div class="settings-options">${options}</div>`, dismiss:'Volver'});
+    $('dtab').querySelector('[aria-pressed="true"]')?.focus();
+  }
+  function selectTypeface(id){
+    applyTypeface(id);
+    try { localStorage.setItem(typefaceKey,currentTypeface); } catch {}
+    $('dtab').querySelectorAll('[data-act="selectTypeface"]').forEach(button => {
+      button.setAttribute('aria-pressed', String(button.dataset.typefaceOption === currentTypeface));
+    });
+  }
+  function returnToGradeSettings(){
+    const draft = gradeSettingsDraft;
+    gradeSettingsDraft = null;
+    openGradeSettings(draft);
+  }
+  function downloadSettingsSchedule(semesterId){
+    const message = $('dmsg');
+    message.textContent = '';
+    exportScheduleImage(state, error => { message.textContent = error; }, semesterId);
+    if(!message.textContent && ui.dialogMode==='scheduleExport') returnToGradeSettings();
   }
   function applyGradeSettings(){
     var min=num($('globalMin').value),max=num($('globalMax').value);
@@ -195,20 +349,22 @@ const allowed = sub => allowedAbsences(sub, state.sem);
 
   function openDlg(mode){
     backupReadId++;
-    ui.dialogMode=mode;$("dgo").hidden=false;$("dgo").className="p";var ta=$("dta");$("dmsg").textContent="";ta.hidden=false;$("dtab").hidden=true;
-    $("dqrexport").hidden=mode!=="export";
-    $("dqrimport").hidden=mode!=="import";
-    if(mode==="export"){
-      $("dt").textContent="Exportar datos";
-      $("dp").textContent="Copia este texto y guárdalo donde quieras. Luego puedes importarlo aquí mismo.";
-      ta.readOnly=true;ta.value=JSON.stringify({version:2,subjects:state.subjects,absences:state.absences,sem:state.sem,gradeScale:state.gradeScale,absencePct:state.absencePct,semesters:state.semesters,activeSemesterId:state.activeSemesterId},null,2);$("dgo").textContent="Copiar";
-    }else{
-      $("dt").textContent="Importar datos";
-      $("dp").textContent="Pega el texto exportado. Una copia completa reemplaza tus semestres, materias y faltas. Una lista antigua agrega materias al semestre activo.";
-      ta.readOnly=false;ta.value="";ta.placeholder="Pega aquí tus datos";$("dgo").textContent="Importar";
-    }
-    $("dlg").hidden=false;
-    $(mode === 'export' ? 'backupDownload' : 'backupOpen').focus();
+    const exporting=mode==='export';
+    openPanel(mode, exporting ? {
+      title:'Exportar datos', confirm:'Copiar',
+      description:'Copia este texto y guárdalo donde quieras. Luego puedes importarlo aquí mismo.'
+    } : {
+      title:'Importar datos', confirm:'Importar',
+      description:'Pega el texto exportado. Una copia completa reemplaza tus semestres, materias y faltas. Una lista antigua agrega materias al semestre activo.'
+    });
+    const textarea=$('dta');
+    textarea.readOnly=exporting;
+    textarea.value=exporting ? JSON.stringify({version:2,...subjectSnapshot(state)},null,2) : '';
+    textarea.placeholder=exporting ? '' : 'Pega aquí tus datos';
+    textarea.hidden=false;
+    $('dqrexport').hidden=!exporting;
+    $('dqrimport').hidden=exporting;
+    $(exporting?'backupDownload':'backupOpen').focus();
   }
   function isCompleteBackup(data) {
     return Array.isArray(data?.subjects) && Array.isArray(data.semesters) && data.semesters.length > 0 &&
@@ -222,7 +378,7 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'nota-clara-' + new Date().toISOString().slice(0, 10) + '.json';
+    link.download = 'cuentas-claras-' + new Date().toISOString().slice(0, 10) + '.json';
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -244,19 +400,18 @@ const allowed = sub => allowedAbsences(sub, state.sem);
       $('dta').value = text;
       message.textContent = 'Copia lista. Pulsa Importar para restaurarla.';
     } catch {
-      if (stillOpen()) message.textContent = 'No pude leer el archivo. Elige una copia JSON completa de Nota Clara.';
+      if (stillOpen()) message.textContent = 'No pude leer el archivo. Elige una copia JSON completa de Cuentas Claras.';
     }
   });
 
   function openWipe(){
-    ui.dialogMode="wipe";
     var n=state.semesters.reduce((n,x)=>n+x.subjects.length,0),a=state.semesters.reduce((n,x)=>n+x.absences.length,0);
-    $("dt").textContent="Eliminar todos los datos";
-    $("dp").textContent="Se borrarán "+n+(n===1?" materia":" materias")+", "+a+(a===1?" falta":" faltas")+", el semestre y la conexión de IA de este navegador. Esta acción no se puede deshacer.";
-    $("dta").hidden=true;$("dta").value="";$("dtab").hidden=true;$("dtab").innerHTML="";
-    $("dgo").hidden=false;$("dgo").textContent="Eliminar todo";$("dgo").className="p danger";
-    $("dqrexport").hidden=true;$("dqrimport").hidden=true;$("dmsg").textContent="";
-    $("dlg").hidden=false;
+    $('dta').value='';
+    openPanel('wipe', {
+      title:'Eliminar todos los datos',
+      description:'Se borrarán '+n+(n===1?' materia':' materias')+', '+a+(a===1?' falta':' faltas')+', el semestre y la conexión de IA de este navegador. Esta acción no se puede deshacer.',
+      confirm:'Eliminar todo', danger:true
+    });
   }
   function applyWipeAll(){
     state.subjects=[];state.absences=[];state.semesters=null;
@@ -266,26 +421,45 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     try{localStorage.removeItem(ONBOARD_KEY)}catch(e){}
     Object.keys(open).forEach(function(k){delete open[k]});
     Object.keys(open2).forEach(function(k){delete open2[k]});
-    ui.archOpen=false;ui.reorderAll=false;ui.reorderId=null;ui.scheduleMessage="";open.faltas=false;
-    save();render();closeDlg();ui.dialogMode="";resetQr();
+    ui.archOpen=false;ui.reorderId=null;ui.scheduleMessage="";open.faltas=false;
+    save();render();closeDlg();resetQr();
   }
-  function closeDlg(){backupReadId++;pendingSemesterDeletion=null;$("dx").textContent="Cerrar";$("dlg").hidden=true;$("dgo").hidden=false;$("dgo").className="p";$("dqrexport").hidden=true;$("dqrimport").hidden=true}
+  let returnFromAIConfig = null;
+  function closeDlg(){
+    const resume = ui.dialogMode === "ai" ? returnFromAIConfig : null;
+    returnFromAIConfig = null;
+    backupReadId++;
+    pendingSemesterDeletion=null;
+    ui.dialogMode='';
+    $('dx').textContent='Cerrar';
+    $('dlg').hidden=true;
+    if (resume) resume();
+  }
   function restoreSnapshot(data){
     var ai=applySubjectSnapshot(state,data);
     if(!ai&&(!data||!Array.isArray(data.subjects)))return;
     if(ai)saveAIConfig(ai);
     ui.scheduleMessage="Datos restaurados desde QR.";
-    ui.reorderAll=false;ui.reorderId=null;
-    save();refreshSemesters();ui.anim.flip=true;render();closeDlg();ui.dialogMode="";
+    ui.reorderId=null;
+    save();refreshSemesters();ui.anim.flip=true;render();closeDlg();
   }
-  $("dx").addEventListener("click",closeDlg);
-  $("dlg").addEventListener("click",function(e){if(e.target===$("dlg"))closeDlg()});
-  document.addEventListener("keydown",function(e){if(e.key==="Escape")closeDlg()});
+  function dismissDlg(){
+    if($('dlg').hidden)return;
+    if(ui.dialogMode==='scheduleExport'||ui.dialogMode==='themes'||ui.dialogMode==='typography')returnToGradeSettings();
+    else closeDlg();
+  }
+  $("dx").addEventListener("click",dismissDlg);
+  $("dlg").addEventListener("click",function(e){if(e.target===$("dlg"))dismissDlg()});
+  document.addEventListener("keydown",function(e){
+    if(e.key!=="Escape"||$('dlg').hidden)return;
+    e.preventDefault();dismissDlg();
+  });
   $("dgo").addEventListener("click",function(){
     var ta=$("dta"),msg=$("dmsg");
     if(ui.dialogMode==="addSemester"||ui.dialogMode==="renameSemester"){applySemesterSettings();return}
     if(ui.dialogMode==="deleteSemester"){applyDeleteSemester();return}
     if(ui.dialogMode==="gradeSettings"){applyGradeSettings();return}
+    if(ui.dialogMode==="scheduleExport"){downloadSettingsSchedule($('exportScheduleSemester').value);return}
     if(ui.dialogMode==="schedule"){applySched();return}
     if(ui.dialogMode==="editsched"){applyEditSched();return}
     if(ui.dialogMode==="addsched"){applyAddSched();return}
@@ -318,11 +492,6 @@ const allowed = sub => allowedAbsences(sub, state.sem);
   });
   function fmtDate(k){var p=k.split("-");return new Date(+p[0],+p[1]-1,+p[2]).toLocaleDateString("es-CO",{weekday:"short",day:"numeric",month:"short",year:"numeric"})}
   function hasSchedule(){return state.subjects.some(function(x){return !x.archived&&x.days&&x.days.length})}
-  function scheduleHint(hs){
-    if(isAIConfigured())return hs?"La foto del horario se lee con tu API de IA. Cada falta se suma solo a las materias que tienes ese día.":"Sube una foto del horario y la leo con tu API de IA, o agrégalo a mano.";
-    if(window.claude&&window.claude.use)return hs?"Cada falta se suma solo a las materias que tienes ese día.":"Sin horario, cada falta se suma a todas tus materias. Sube una foto y la leo por ti.";
-    return "Conecta una API de IA para leer la foto o agrega el horario a mano.";
-  }
   function faltHtml(){
     var n=state.absences.length,scheduled=state.subjects.filter(function(x){return !x.archived&&x.days&&x.days.length}).length;
     function entry(action,title,summary,icon){
@@ -336,7 +505,7 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     var hs=hasSchedule();
     if(ui.attendanceView==='schedule')return '<section class="attendance-section"><div class="attendance-section-head"><h3>Horario semanal</h3><button class="ghost" data-act="editHorario">Editar horario</button></div>'+
       (hs?schedTable(stateRows()):'<div class="attendance-empty">Sin horario</div>')+
-      '<div class="sch"><button data-act="exportScheduleImage">Descargar imagen</button><button data-act="uploadSch">'+(hs?'Actualizar foto':'Subir foto del horario')+'</button><button data-act="addSched">Agregar a mano</button><button class="ghost" data-act="aiConfig">'+(isAIConfigured()?'IA conectada':'Conectar IA')+'</button></div><p class="m" id="schmsg" role="status">'+esc(ui.scheduleMessage||'')+'</p></section>';
+      '<div class="sch"><button data-act="exportScheduleImage">Descargar imagen</button></div><p class="m" id="schmsg" role="status">'+esc(ui.scheduleMessage||'')+'</p></section>';
     var h='<section class="attendance-section semester-dates-section">'+semBox()+'</section>'+
       '<section class="attendance-section absence-list"><div class="attendance-section-head"><h3><span class="attendance-total">'+state.absences.length+'</span> registradas</h3><button class="absence-add" data-act="addFalta" aria-label="Registrar falta" title="Registrar falta"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>';
     var list=state.absences.slice().sort(function(a,b){return a.date<b.date?1:-1});
@@ -369,7 +538,7 @@ const allowed = sub => allowedAbsences(sub, state.sem);
   $("attendanceClose").addEventListener('click',closeAttendance);
   $("attendanceDlg").addEventListener('click',function(e){if(e.target===$("attendanceDlg"))closeAttendance()});
   document.addEventListener('keydown',function(e){
-    if($("attendanceDlg").hidden||!$("dlg").hidden||!$("cal").hidden)return;
+    if(e.defaultPrevented||$("attendanceDlg").hidden||!$("dlg").hidden||!$("cal").hidden)return;
     if(e.key==='Escape'){closeAttendance();return}
     if(e.key!=='Tab')return;
     var items=Array.from($("attendanceDlg").querySelectorAll('button,input,select,textarea,[tabindex="0"]')).filter(function(el){return !el.disabled&&el.getClientRects().length});
@@ -425,11 +594,26 @@ const allowed = sub => allowedAbsences(sub, state.sem);
 
   const { renderRaw, refreshCard } = createSubjectsView({ state, ui, open, open2, find, allowed, faltHtml, renderAttendance });
   const { render, shrink } = createMotion({ ui, renderRaw });
-  const { openHorList, openSchedEdit, applyEditSched, applySched, schedTable, stateRows, requestSchedulePhoto, openAddSched, applyAddSched, openAIConfig, applyAIConfig } =
-    createSchedule({ state, ui, save, render, find, limitLine, closeDlg, removeSubject });
+  const { showSched, openHorList, applyEditSched, applySched, schedTable, stateRows, requestSchedulePhoto, openAddSched, applyAddSched, openAIConfig, applyAIConfig } =
+    createSchedule({ state, ui, save, render, find, limitLine, openPanel, closeDlg, removeSubject });
+  const { openCurriculum } = createCurriculumImport({state, importCurriculum, refreshSemesters, render, openAIConfig});
   const { openGradeImport } = createGradeImport({ state, save, render, openAIConfig });
-  const { openOnboarding } = createOnboarding({ state, ui, save, render, schedTable, openAddSched });
-  const { applyImportReview, reset: resetQr } = createQrTransfer({ state, ui, restoreSnapshot });
-  const { initSync, schedulePush } = createSync({ state, ui, render });
+  const { openOnboarding } = createOnboarding({ state, ui, save, render, schedTable, openAddSched, reviewExisting: showSched, adjustAI(resume) {
+    returnFromAIConfig = resume;
+    openAIConfig(false);
+  } });
+  const { applyImportReview, reset: resetQr } = createQrTransfer({ state, ui, openPanel, restoreSnapshot });
+  const { initSync, schedulePush } = createSync({ state, ui, render, refreshSemesters });
   onSave(schedulePush);
+  try{
+    // Conserva la preferencia guardada antes del cambio de marca.
+    const previousThemeKey = ['nota', 'clara', 'theme'].join('-');
+    const savedTheme = localStorage.getItem(themeKey) || localStorage.getItem(previousThemeKey);
+    applyTheme(savedTheme);
+    if(savedTheme){
+      localStorage.setItem(themeKey,currentTheme);
+      localStorage.removeItem(previousThemeKey);
+    }
+  }catch{applyTheme('default')}
+  try { applyTypeface(localStorage.getItem(typefaceKey)); } catch { applyTypeface(defaultTypeface); }
   refreshSemesters();ui.anim.first=true;render();initSync();

@@ -1,4 +1,4 @@
-# Nota Clara
+# Cuentas Claras
 
 Aplicación web para guardar materias, registrar notas con sus porcentajes, calcular la nota necesaria para aprobar y gestionar horarios y faltas. Conserva el diseño oscuro y el formato de datos de la versión original.
 

@@ -1,4 +1,4 @@
-import { weightedAverage } from '../domain/averages.js';
+import { semesterAverage, weightedAverage } from '../domain/averages.js';
 import { num, f, esc } from '../core/utils.js';
 import { calc, chip, isGraded } from '../domain/grades.js';
 
@@ -24,7 +24,7 @@ export function createSubjectsView({ state, ui, open, open2, find, allowed, falt
     return h+'<div class="actions"><button data-act="addRow">Agregar evaluación</button><button class="ghost" data-act="archive">'+(sub.archived?"Restaurar":"Archivar")+'</button><button class="ghost" data-act="delSub">Eliminar materia</button></div></div>';
   }
   function cardHtml(sub){
-    var o=!!open[sub.id],ro=ui.reorderAll||ui.reorderId===sub.id;
+    var o=!!open[sub.id],ro=ui.reorderId===sub.id;
     var name='<input class="n name subject-name" data-k="name" aria-label="Nombre de la materia" placeholder="Nombre de la materia" value="'+esc(sub.name)+'">';
     return '<section class="card'+(o&&!ro?" open":"")+(ro?" reorder":"")+'" data-id="'+sub.id+'">'+
         (ro?'<div class="item ro"><span class="t">'+name+'<span class="m"></span></span><span class="chip"></span><span class="mv"><button class="ghost" data-act="move" data-dir="-1" aria-label="Subir">↑</button><button class="ghost" data-act="move" data-dir="1" aria-label="Bajar">↓</button><button class="p" data-act="doneReorder">Listo</button></span></div>'
@@ -33,7 +33,6 @@ export function createSubjectsView({ state, ui, open, open2, find, allowed, falt
   }
   function renderRaw(){
     var app=document.getElementById("app");
-    var rb=document.querySelector('[data-act="reorderAll"]');if(rb)rb.classList.toggle("on",ui.reorderAll);
     var act=state.subjects.filter(function(x){return !x.archived}),arc=state.subjects.filter(function(x){return x.archived}),h="";
     if(!state.subjects.length)h='<div class="empty"><p>Aún no tienes materias.</p><div class="empty-acts"><button class="p" data-act="openOnboard">Subir foto de horario con IA</button><button class="ghost" data-act="addSched">Agregar horario a mano</button></div></div>';
     else{
@@ -49,11 +48,15 @@ export function createSubjectsView({ state, ui, open, open2, find, allowed, falt
     refreshAverages();
   }
   function refreshAverages(){
-    const current=weightedAverage(state.subjects);
-    const all=weightedAverage(state.semesters.flatMap(x=>x.id===state.activeSemesterId?state.subjects:x.subjects));
-    const format=result=>result.value===null?'—':f(result.value);
     const summary=document.getElementById('averageSummary');
-    if(summary)summary.innerHTML='<span>Promedio del semestre <strong>'+format(current)+'</strong></span><span title="Promedio ponderado por créditos de todos los semestres registrados">Promedio acumulado de la carrera <strong>'+format(all)+'</strong></span>';
+    if(!summary)return;
+    const format=value=>value===null?'-':f(value);
+    const current=semesterAverage(state.subjects);
+    const semester='<span title="Calculado sobre las evaluaciones calificadas">Promedio del semestre <strong>'+format(current)+'</strong></span>';
+    const career=state.semesters.length>1
+      ? '<span title="Promedio de notas definitivas ponderado por créditos">Promedio acumulado de la carrera <strong>'+format(weightedAverage(state.semesters.flatMap(x=>x.id===state.activeSemesterId?state.subjects:x.subjects)).value)+'</strong></span>'
+      : '';
+    summary.innerHTML=semester+career;
   }
   function refreshCard(card){
     if(!card||!card.isConnected)return;

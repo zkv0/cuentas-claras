@@ -10,3 +10,20 @@ export function weightedAverage(subjects){
   });
   return {value:credits?points/credits:null,credits,count};
 }
+
+export function semesterAverage(subjects){
+  const available = subjects.flatMap(subject => {
+    if (subject.cancelled) return [];
+    const grade = calc(subject);
+    if (grade.over || grade.graded <= 0) return [];
+    return [{ value: grade.earned * 100 / grade.graded, credits: num(subject.credits) }];
+  });
+  const useCredits = available.every(subject => subject.credits > 0);
+  let points = 0, totalWeight = 0;
+  for (const subject of available) {
+    const weight = useCredits ? subject.credits : 1;
+    points += subject.value * weight;
+    totalWeight += weight;
+  }
+  return totalWeight ? points / totalWeight : null;
+}

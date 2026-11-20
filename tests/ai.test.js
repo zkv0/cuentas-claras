@@ -5,7 +5,6 @@ import {
   isAIConfigured,
   extractJson,
   buildSchedulePrompt,
-  buildScheduleRequest,
   readScheduleImage,
   testAIConnection,
 } from '../src/services/ai.js';
@@ -52,33 +51,6 @@ test('el mensaje pide JSON y conserva los nombres conocidos', () => {
   assert.match(prompt, /"materias"/);
 });
 
-test('construye la solicitud OpenAI con imagen y modo JSON', () => {
-  const body = buildScheduleRequest(
-    { provider: 'openai', apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
-    'data:image/png;base64,AAAA',
-    'Extrae el horario en JSON.',
-  );
-  assert.equal(body.model, 'gpt-4o-mini');
-  assert.deepEqual(body.response_format, { type: 'json_object' });
-  assert.equal(body.thinking, undefined);
-  assert.equal(body.messages[0].content[1].image_url.url, 'data:image/png;base64,AAAA');
-});
-
-test('construye la solicitud de Anthropic con imagen base64', () => {
-  const body = buildScheduleRequest(
-    { provider: 'anthropic', apiKey: 'sk-ant', baseUrl: 'https://api.anthropic.com', model: 'claude-sonnet-4-5' },
-    'data:image/jpeg;base64,BBBB',
-    'Extrae el horario en JSON.',
-  );
-  assert.equal(body.model, 'claude-sonnet-4-5');
-  assert.equal(body.response_format, undefined);
-  assert.equal(body.messages[0].content[0].type, 'text');
-  assert.deepEqual(body.messages[0].content[1], {
-    type: 'image',
-    source: { type: 'base64', media_type: 'image/jpeg', data: 'BBBB' },
-  });
-});
-
 test('envía la clave y la imagen a un proveedor compatible con OpenAI', async () => {
   const original = globalThis.fetch;
   let captured = null;
@@ -102,6 +74,8 @@ test('envía la clave y la imagen a un proveedor compatible con OpenAI', async (
     assert.equal(captured.url, 'https://api.openai.com/v1/chat/completions');
     assert.equal(captured.options.headers.Authorization, 'Bearer sk-test');
     const body = JSON.parse(captured.options.body);
+    assert.equal(body.model, 'gpt-4o-mini');
+    assert.equal(body.thinking, undefined);
     assert.equal(body.messages[0].content[1].image_url.url, 'data:image/png;base64,AAAA');
     assert.equal(body.response_format.type, 'json_object');
   } finally {
@@ -148,7 +122,7 @@ test('usa el formato de Anthropic y sus cabeceras', async () => {
   };
   try {
     const result = await readScheduleImage(
-      'data:image/png;base64,AAAA',
+      'data:image/jpeg;base64,BBBB',
       { provider: 'anthropic', apiKey: 'sk-ant', baseUrl: 'https://api.anthropic.com', model: 'claude-sonnet-4-5' },
       'Extrae el horario en JSON.',
     );
@@ -158,7 +132,13 @@ test('usa el formato de Anthropic y sus cabeceras', async () => {
     assert.equal(captured.options.headers['anthropic-version'], '2023-06-01');
     assert.equal(captured.options.headers['anthropic-dangerous-direct-browser-access'], 'true');
     const body = JSON.parse(captured.options.body);
-    assert.equal(body.messages[0].content[1].source.data, 'AAAA');
+    assert.equal(body.model, 'claude-sonnet-4-5');
+    assert.equal(body.response_format, undefined);
+    assert.equal(body.messages[0].content[0].type, 'text');
+    assert.deepEqual(body.messages[0].content[1], {
+      type: 'image',
+      source: { type: 'base64', media_type: 'image/jpeg', data: 'BBBB' },
+    });
   } finally {
     globalThis.fetch = original;
   }
@@ -231,6 +211,23 @@ test('prueba la conexión consultando los modelos del proveedor', async () => {
     assert.deepEqual(models, ['gpt-4o-mini']);
     assert.equal(captured.url, 'https://api.openai.com/v1/models');
     assert.equal(captured.options.headers.Authorization, 'Bearer sk-test');
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('lee varias capturas de una malla y acepta la colección de semestres', async () => {
+  const original = globalThis.fetch;
+  const images = ['data:image/png;base64,AAAA','data:image/png;base64,BBBB'];
+  const result = {semestres:[{nombre:'Semestre 1',materias:[{nombre:'Cálculo',creditos:3}]}]};
+  try {
+    globalThis.fetch = async (_url, options) => {
+      const body = JSON.parse(options.body);
+      assert.deepEqual(body.messages[0].content.slice(1).map(item => item.image_url.url),images);
+      return {ok:true,text:async()=>JSON.stringify({choices:[{message:{content:JSON.stringify(result)}}]})};
+    };
+    const config = {provider:'openai',apiKey:'sk-test',baseUrl:'https://api.openai.com/v1',model:'gpt-4o-mini'};
+    assert.deepEqual(await readScheduleImage(images, config, 'Lee la malla.', 'la malla', 8000, 'semestres'),result);
   } finally {
     globalThis.fetch = original;
   }

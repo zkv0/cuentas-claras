@@ -1,3 +1,5 @@
+import { curriculumNameKey } from '../domain/curriculum.js';
+import { cleanSubject } from '../domain/subjects.js';
 import { num, uid } from './utils.js';
 import { KEY } from './constants.js';
 
@@ -38,6 +40,34 @@ export function addSemester(name, dates={}) {
   commitSemester();
   const semester={id:uid(),name:name.trim(),subjects:[],absences:[],sem:{start:dates.start||'',end:dates.end||'',pct:state.absencePct??''}};
   state.semesters.push(semester);state.activeSemesterId=semester.id;initializeSemesters();save();
+}
+export function importCurriculum(periods, mergeIds) {
+  commitSemester();
+  let created = 0, added = 0;
+  for (const {name, subjects} of periods) {
+    const matches = state.semesters.filter(semester => curriculumNameKey(semester.name) === curriculumNameKey(name));
+    if (matches.length > 1 || (matches.length === 1 && !mergeIds.has(matches[0].id))) continue;
+    const existing = matches[0];
+    const semester = existing || {id:uid(), name, subjects:[], absences:[], sem:{start:'', end:'', pct:state.absencePct ?? ''}};
+    const known = new Set(semester.subjects.map(subject => curriculumNameKey(subject.name)));
+    for (const subject of subjects) {
+      const key = curriculumNameKey(subject.name);
+      if (known.has(key)) continue;
+      const rows = Array.from({length:3}, () => ({p:'', g:'', pred:''}));
+      semester.subjects.push(cleanSubject({...subject, rows, ...state.gradeScale}));
+      known.add(key);
+      added++;
+    }
+    if (!existing) {
+      state.semesters.push(semester);
+      created++;
+    }
+  }
+  if (added) {
+    initializeSemesters();
+    save();
+  }
+  return {created, added};
 }
 export function removeSemester(id) {
   const index=state.semesters.findIndex(x=>x.id===id);

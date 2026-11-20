@@ -26,6 +26,7 @@ globalThis.localStorage = {
   removeItem: key => memory.delete(key),
 };
 globalThis.document = {
+  documentElement: element('html'),
   getElementById: element,
   body: element("body"),
   querySelector: selector => selector === ".top" ? element("top") : null,
@@ -36,9 +37,9 @@ globalThis.document = {
   },
 };
 globalThis.window = {};
-function clickAction(action) {
+function clickAction(action, data = {}) {
   const button = {
-    dataset: { act: action },
+    dataset: { act: action, ...data },
     closest(selector) { return selector === 'button' ? this : null; },
     hasAttribute() { return false; },
   };
@@ -54,34 +55,85 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
   assert.doesNotMatch(html, /type="module"/);
   vm.runInThisContext(readFileSync(new URL('../assets/qrcode.js', import.meta.url), 'utf8'));
   vm.runInThisContext(readFileSync(new URL('../assets/lz-string.min.js', import.meta.url), 'utf8'));
+  const previousThemeKey = ['nota', 'clara', 'theme'].join('-');
+  memory.set(previousThemeKey, 'jade');
   vm.runInThisContext(readFileSync(new URL('../assets/app.bundle.js', import.meta.url), 'utf8'));
+  assert.equal(element('html').dataset.theme, 'jade');
+  assert.equal(memory.get('cuentas-claras-theme'), 'jade');
+  assert.equal(memory.has(previousThemeKey), false);
   assert.match(element('app').innerHTML, /Aún no tienes materias/);
-  assert.match(element('app').innerHTML, /Agregar horario a mano/);
+  assert.doesNotMatch(element('averageSummary').innerHTML, /Promedio acumulado de la carrera/);
+  const manualAction = element('app').innerHTML.match(/data-act="([^"]+)">Agregar horario a mano/);
+  assert.ok(manualAction);
   assert.match(html, /id="onboardDlg" hidden/);
   assert.equal(element('onboardDlg').hidden, true);
   clickAction('openOnboard');
   assert.equal(element('onboardDlg').hidden, false);
+  element('obAnswer').value = JSON.stringify({materias:[{nombre:'Álgebra', bloques:[{dia:2,inicio:'08:00',fin:'10:00'}]}]});
+
+  element('obReviewAnswer').handlers.click();
+  assert.equal(element('obReview').hidden, false);
+  element('obBack').handlers.click();
   element('obSkip').handlers.click();
   assert.equal(element('onboardDlg').hidden, true);
   assert.equal(element('dlg').hidden, false);
   assert.equal(element('dt').textContent, 'Agregar horario a mano');
+  element('dx').handlers.click();
+  clickAction(manualAction[1]);
+  assert.equal(element('dlg').hidden, false);
+  assert.equal(element('dt').textContent, 'Agregar horario a mano');
   const scheduleDay = String(new Date().getDay());
+  const setScheduleTime = (time, value) =>
+    element('dtab').handlers.change({ target: { dataset: { block: '0', time }, value } });
   element('asName').value = 'Cálculo';
   element('dtab').handlers.click({
     target: { closest: selector => selector === '[data-eday]' ? { dataset: { eday: scheduleDay } } : null },
   });
+  setScheduleTime('s', '07:00');
+  setScheduleTime('e', '09:00');
   element('dgo').handlers.click();
   const saved = JSON.parse(memory.get('calc-notas-v2'));
   assert.equal(saved.subjects.length, 1);
   assert.equal(saved.subjects[0].name, 'Cálculo');
   assert.deepEqual(saved.subjects[0].days, [Number(scheduleDay)]);
+  assert.deepEqual(saved.subjects[0].blocks, [{d:Number(scheduleDay),s:'07:00',e:'09:00'}]);
   assert.equal(saved.subjects[0].rows.length, 3);
   assert.equal(element('dlg').hidden, true);
   assert.match(element('app').innerHTML, /Faltas de asistencia/);
   assert.doesNotMatch(html, /data-act="(?:export|import)"/);
   // La escala global valida y actualiza todas las materias guardadas.
   clickAction('gradeSettings');
-  assert.equal(element('dt').textContent, 'Ajustes globales');
+  assert.equal(element('dt').textContent, 'Configuración de Cuentas Claras');
+  assert.match(element('dtab').innerHTML, /data-act="themes"/);
+  assert.equal(document.documentElement.dataset.theme, 'jade');
+  element('globalMax').value='4,5';
+  assert.equal(document.documentElement.dataset.typeface, 'atkinson');
+  clickAction('typography');
+  assert.equal(element('dt').textContent, 'Tipografía');
+  assert.equal((element('dtab').innerHTML.match(/data-typeface-option=/g) || []).length, 10);
+  clickAction('selectTypeface', { typefaceOption: 'fraunces' });
+  assert.equal(document.documentElement.dataset.typeface, 'fraunces');
+  assert.equal(memory.get('cuentas-claras-typeface'), 'fraunces');
+  element('dx').handlers.click();
+  assert.match(element('dtab').innerHTML, /id="globalMax"[^>]*value="4,5"/);
+  clickAction('themes');
+  assert.equal(element('dt').textContent, 'Temas');
+  assert.deepEqual([...element('dtab').innerHTML.matchAll(/data-theme="([^"]+)"/g)].map(match => match[1]),
+    ['default','rose','red','white','blue','eclipse','jade','amber']);
+  assert.match(element('dtab').innerHTML, /Eclipse total/);
+  assert.match(element('dtab').innerHTML, /Bosque de jade/);
+  assert.match(element('dtab').innerHTML, /Ámbar del desierto/);
+  clickAction('selectTheme', { theme: 'eclipse' });
+  assert.equal(document.documentElement.dataset.theme, 'eclipse');
+  clickAction('selectTheme', { theme: 'blue' });
+  assert.equal(document.documentElement.dataset.theme, 'blue');
+  assert.equal(memory.get('cuentas-claras-theme'), 'blue');
+  element('dx').handlers.click();
+  assert.match(element('dtab').innerHTML, /id="globalMax"[^>]*value="4,5"/);
+  clickAction('themes');
+  assert.match(element('dtab').innerHTML, /data-theme="blue" aria-pressed="true"/);
+  clickAction('selectTheme', { theme: 'default' });
+  element('dx').handlers.click();
   assert.match(element('dtab').innerHTML, /data-act="export"/);
   assert.match(element('dtab').innerHTML, /data-act="exportSettingsSchedule"/);
   assert.doesNotMatch(element('dtab').innerHTML, /id="exportScheduleSemester"/);
@@ -126,6 +178,8 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
   clickAction('openSchedule');
   assert.equal(element('attendanceTitle').textContent, 'Horario');
   assert.match(element('attendanceContent').innerHTML, /Horario semanal/);
+  assert.deepEqual([...element('attendanceContent').innerHTML.matchAll(/<button[^>]+data-act="([^"]+)"/g)].map(match => match[1]),
+    ['editHorario', 'exportScheduleImage']);
   assert.doesNotMatch(element('attendanceContent').innerHTML, /data-act="addFalta"|data-sem=/);
   element('attendanceClose').handlers.click();
   clickAction('openAttendance');
@@ -146,6 +200,13 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
   assert.match(element('dtab').innerHTML, /data-hl-new/);
   assert.match(element('dtab').innerHTML, /Agregar materia/);
   element('dtab').handlers.click({
+    target: { closest: selector => selector === '[data-hl-edit]' ? { dataset: { hlEdit: saved.subjects[0].id } } : null },
+  });
+  assert.match(element('dtab').innerHTML, /data-time="s" value="07:00"/);
+  setScheduleTime('s', '08:00');
+  element('dgo').handlers.click();
+  assert.equal(JSON.parse(memory.get('calc-notas-v2')).subjects[0].blocks[0].s, '08:00');
+  element('dtab').handlers.click({
     target: { closest: selector => selector === '[data-hl-new]' ? {} : null },
   });
   assert.equal(element('dt').textContent, 'Agregar horario a mano');
@@ -155,9 +216,22 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
   assert.equal(element('dgo').hidden, false);
   assert.equal(element('dqrimport').hidden, false);
   assert.equal(element('dqrexport').hidden, true);
-  // Sin clave configurada, subir una foto abre el formulario de IA.
-  clickAction('uploadSch');
-  assert.equal(element('dlg').hidden, false);
+  clickAction('gradeSettings');
+  assert.equal(element('dt').textContent, 'Configuración de Cuentas Claras');
+  assert.match(element('dtab').innerHTML, /Inteligencia artificial/);
+  assert.match(element('dtab').innerHTML, /data-act="updateGradesAI"/);
+  assert.match(element('dtab').innerHTML, /data-act="uploadScheduleAI"/);
+  assert.match(element('dtab').innerHTML, /Conectar API de IA/);
+  clickAction('updateGradesAI');
+  assert.equal(element('dlg').hidden, true);
+  assert.equal(element('gradesAiDlg').hidden, false);
+  element('gradesAiClose').handlers.click();
+  // Sin clave configurada, subir una foto desde IA abre el formulario de conexión.
+  clickAction('gradeSettings');
+  clickAction('uploadScheduleAI');
+  assert.equal(element('onboardDlg').hidden, false);
+  element('obAdjustAI').handlers.click();
+  assert.equal(element('onboardDlg').hidden, true);
   assert.equal(element('dt').textContent, 'Conectar IA');
   assert.match(element('dtab').innerHTML, /id="aiProvider"/);
   assert.match(element('dtab').innerHTML, /OpenAI/);
@@ -170,6 +244,15 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
   element('dgo').handlers.click();
   assert.equal(JSON.parse(memory.get('calc-notas-ai')).apiKey, 'sk-test');
   assert.equal(element('dlg').hidden, true);
+  assert.equal(element('onboardDlg').hidden, false);
+  element('onboardDlg').handlers.click({target:element('onboardDlg')});
+  clickAction('gradeSettings');
+  assert.match(element('dtab').innerHTML, /Gestionar API de IA/);
+  clickAction('aiConfig');
+  assert.equal(element('dt').textContent, 'Conectar IA');
+  assert.match(element('dtab').innerHTML, /data-ai-test/);
+  assert.match(element('dtab').innerHTML, /data-ai-clear/);
+  element('dx').handlers.click();
 
   // La exportación por QR genera un SVG con la copia completa.
   clickAction('export');
@@ -231,14 +314,23 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
   element('dgo').handlers.click();
   assert.match(element('semesterSelect').innerHTML,/2027-1/);
   assert.equal(JSON.parse(memory.get('calc-notas-v2')).semesters.length,2);
+  assert.match(element('averageSummary').innerHTML, /Promedio acumulado de la carrera/);
   assert.equal(JSON.parse(memory.get('calc-notas-v2')).sem.start,'2027-01-20');
   assert.equal(JSON.parse(memory.get('calc-notas-v2')).sem.end,'2027-06-15');
   clickAction('gradeSettings');
+  assert.doesNotMatch(element('dtab').innerHTML, /id="exportScheduleSemester"/);
+  element('globalAbsencePct').value='20';
+  clickAction('exportSettingsSchedule');
+  assert.equal(element('dt').textContent, 'Descargar horario');
   assert.match(element('dtab').innerHTML, /id="exportScheduleSemester"/);
   assert.match(element('dtab').innerHTML, /<option[^>]+selected>2027-1<\/option>/);
   element('exportScheduleSemester').value = JSON.parse(memory.get('calc-notas-v2')).activeSemesterId;
-  clickAction('exportSettingsSchedule');
+  element('dgo').handlers.click();
   assert.match(element('dmsg').textContent, /semestre no tiene un horario/);
+  element('globalAbsencePct').value='';
+  element('dx').handlers.click();
+  assert.equal(element('dt').textContent, 'Configuración de Cuentas Claras');
+  assert.match(element('dtab').innerHTML, /id="globalAbsencePct"[^>]*value="20"/);
   element('globalAbsencePct').value='20';
   element('dgo').handlers.click();
   assert.ok(JSON.parse(memory.get('calc-notas-v2')).semesters.every(x=>x.sem.pct===20));
@@ -291,7 +383,7 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
     document.body.appendChild = appendChild;
     delete document.createElement;
   }
-  assert.match(downloadedName, /^nota-clara-\d{4}-\d{2}-\d{2}\.json$/);
+  assert.match(downloadedName, /^cuentas-claras-\d{4}-\d{2}-\d{2}\.json$/);
   assert.equal(downloadedBlob.type, 'application/json');
   assert.equal(await downloadedBlob.text(), backup);
   importText('[{"name":"Materia temporal","rows":[]}]');

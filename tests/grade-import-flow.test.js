@@ -48,12 +48,22 @@ test('selecciona una foto, llama a la API, reemplaza, evita duplicados y deshace
   assert.deepEqual(state.subjects,original);assert.equal(saves,2);
   assert.equal(element('gradesAiSubmit').disabled,false);
   assert.match(element('gradesAiStatus').textContent,/conectar/);
+  const previousCalls = calls;
+  element('grAnswer').value = '```json\n'+JSON.stringify({materias:[{nombre:'Física',evaluaciones:[{porcentaje:100,nota:4.5}]}]})+'\n```';
+  element('grReviewAnswer').handlers.click();
+  assert.deepEqual(state.subjects,original);
+  assert.equal(element('grApply').hidden,false);
+  element('grApply').handlers.click();
+  assert.equal(state.subjects[0].rows[0].g,'4.5');
+  assert.equal(calls,previousCalls);
+  element('gradesAiUndo').handlers.click();
+  assert.deepEqual(state.subjects,original);
+
 });
 
-test('el botón compacto está junto a reordenar y el selector nativo permanece oculto', () => {
+test('la importación de notas conserva oculto el selector nativo y queda fuera del encabezado', () => {
   const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
-  assert.equal((html.match(/data-act="updateGradesAI"/g)||[]).length,1);
-  assert.match(html,/data-act="reorderAll"[^\n]+class="icon" data-act="updateGradesAI"/);
+  assert.doesNotMatch(html,/data-act="(?:reorderAll|aiTools|updateGradesAI)"/);
   assert.match(html,/<input[^>]+id="gradesAiFile"[^>]+hidden>/);
   assert.match(html,/id="gradesAiDrop"/);
 });

@@ -1,5 +1,16 @@
 import { uid, tm } from '../core/utils.js';
 
+export function subjectSnapshot({subjects, absences, sem, gradeScale, absencePct, semesters, activeSemesterId}){
+  return {subjects, absences, sem, gradeScale, absencePct, semesters, activeSemesterId};
+}
+
+export function createScheduledSubject({name, days, blocks}){
+  return {
+    id:uid(), name, days, blocks, min:3, max:5,
+    rows:Array.from({length:3}, () => ({p:'',g:'',pred:''}))
+  };
+}
+
 // Crea una copia importable con identidad nueva; mantiene la estructura histórica.
 export function cleanSubject(x){
     var rows=Array.isArray(x.rows)?x.rows:[];

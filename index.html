@@ -3,16 +3,46 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Nota Clara · Notas y horarios</title>
-<meta name="description" content="Organiza tus materias, calcula tus notas y gestiona tus horarios y asistencia con Nota Clara.">
+<title>Cuentas Claras | Calculadora de notas y promedio académico</title>
+<meta name="description" content="Calcula tus notas y el promedio del semestre, descubre cuánto necesitas para aprobar y organiza tus horarios y faltas de asistencia con Cuentas Claras.">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="es_CO">
+<meta property="og:site_name" content="Cuentas Claras">
+<meta property="og:title" content="Cuentas Claras | Calculadora de notas y promedio académico">
+<meta property="og:description" content="Calcula cuánto necesitas para aprobar, consulta tu promedio y organiza tus horarios y faltas de asistencia.">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Cuentas Claras | Calculadora de notas y promedio académico">
+<meta name="twitter:description" content="Calcula tus notas y organiza tus materias, horarios y asistencia desde el navegador.">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Cuentas Claras",
+  "description": "Calculadora de notas y promedio académico con organización de horarios y control de faltas de asistencia.",
+  "applicationCategory": "EducationalApplication",
+  "operatingSystem": "Web",
+  "inLanguage": "es",
+  "featureList": ["Cálculo de notas por porcentaje", "Cálculo de nota necesaria para aprobar", "Promedio del semestre", "Horario de clases", "Registro de faltas de asistencia", "Copias de seguridad JSON"]
+}
+</script>
 <meta name="theme-color" content="#000000">
-<link rel="icon" type="image/svg+xml" href="./assets/nota-clara.svg">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap">
+<link rel="icon" type="image/svg+xml" href="./assets/cuentas-claras.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;500;600&amp;family=Barlow+Condensed:wght@400;500;600&amp;family=Fraunces:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;family=Inter:wght@400;500;600&amp;family=Lexend:wght@400;500;600&amp;family=Lora:wght@400;500;600&amp;family=Nunito:wght@400;500;600&amp;family=Source+Sans+3:wght@400;500;600&amp;family=Space+Grotesk:wght@400;500;600&amp;display=swap">
 <link rel="stylesheet" href="./styles/main.css">
 </head>
 <body>
 <main>
-  <div class="top"><header class="brand"><img src="./assets/nota-clara.svg" width="40" height="40" alt=""><span>Nota Clara</span></header><div class="tools"><button class="icon" data-act="searchSubjects" aria-label="Buscar materias" title="Buscar materias"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button><button class="icon" data-act="gradeSettings" aria-label="Ajustes globales" title="Ajustes globales"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--surface)"/><circle cx="15" cy="17" r="3" fill="var(--surface)"/></svg></button><button class="icon" data-act="reorderAll" aria-label="Reordenar materias" title="Reordenar materias"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/></svg></button><button type="button" class="icon" data-act="updateGradesAI" aria-label="Actualizar notas con IA" title="Actualizar notas con IA"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11a8 8 0 0 1 13-6l3 3M20 3v5h-5M20 13a8 8 0 0 1-13 6l-3-3M4 21v-5h5"/><path d="m12 8 1.2 2.8L16 12l-2.8 1.2L12 16l-1.2-2.8L8 12l2.8-1.2Z"/></svg></button></div></div>
+  <div class="top">
+    <header class="brand"><img src="./assets/cuentas-claras.svg" width="40" height="40" alt=""><h1>Cuentas Claras</h1></header>
+    <div class="tools">
+      <button class="icon" data-act="searchSubjects" aria-label="Buscar materias" title="Buscar materias"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button>
+      <button class="icon" data-act="gradeSettings" aria-label="Configuración de Cuentas Claras" title="Configuración de Cuentas Claras"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3h4l.6 2.6 1.5.9 2.5-.8 2 3.5-1.9 1.8v2l1.9 1.8-2 3.5-2.5-.8-1.5.9L14 21h-4l-.6-2.6-1.5-.9-2.5.8-2-3.5L5.3 13v-2L3.4 9.2l2-3.5 2.5.8 1.5-.9L10 3Z"/><circle cx="12" cy="12" r="3.2"/></svg></button>
+    </div>
+  </div>
+  <p class="app-description">Calcula tus notas y organiza tu semestre.</p>
   <p class="sync" id="sync" hidden></p>
   <div class="semester-bar">
     <label class="semester-picker">Semestre<select id="semesterSelect" aria-label="Semestre activo"></select></label>
@@ -37,14 +67,87 @@
   <div class="dlg grades-ai-dialog" id="gradesAiDlg" hidden>
     <div class="dbox grades-ai-box" role="dialog" aria-modal="true" aria-labelledby="gradesAiTitle">
       <header class="grades-ai-header"><div><h2 id="gradesAiTitle">Actualizar notas con IA</h2></div><button type="button" class="icon" id="gradesAiClose" aria-label="Cerrar actualización de notas"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg></button></header>
+      <fieldset class="ai-method" id="grMethod">
+        <legend>Método de importación</legend>
+        <label><input type="radio" name="grMode" value="personal" checked>Sin API</label>
+        <label><input type="radio" name="grMode" value="api">Con API</label>
+      </fieldset>
+      <div class="personal-ai" id="grPersonal">
+        <ol class="personal-ai-steps" aria-label="Pasos para importar sin API">
+          <li>
+            <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 4H6a2 2 0 0 0-2 2v10"/></svg>
+            <span>Pulsa «Copiar prompt».</span>
+          </li>
+          <li>
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16v12H9l-5 4V5Z"/><circle cx="9" cy="9" r="1"/><path d="m6 15 4-3 3 2 3-4 2 3"/></svg>
+            <span>En tu IA (Gemini, ChatGPT, Claude, etc.), pega el prompt y adjunta la captura de tus notas.</span>
+          </li>
+          <li>
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 6-5 6 5 6m8-12 5 6-5 6M14 5l-4 14"/></svg>
+            <span>Copia la respuesta de tu IA, pégala aquí y pulsa «Revisar notas».</span>
+          </li>
+        </ol>
+        <button type="button" id="grCopy" class="copy-prompt"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 4H6a2 2 0 0 0-2 2v10"/></svg>Copiar prompt</button>
+        <textarea id="grPrompt" aria-label="Prompt para copiar" readonly hidden></textarea>
+        <label>Respuesta de tu IA<textarea id="grAnswer" rows="3" spellcheck="false" placeholder="Pega el JSON aquí"></textarea></label>
+        <button type="button" id="grReviewAnswer">Revisar notas</button>
+        <span role="status" id="grFeedback"></span>
+      </div>
       <input type="file" id="gradesAiFile" accept="image/png,image/jpeg,image/webp" hidden>
-      <button type="button" class="grades-ai-drop" id="gradesAiDrop" aria-label="Seleccionar o cambiar captura de notas">
+      <button type="button" class="grades-ai-drop api-only" id="gradesAiDrop" aria-label="Seleccionar o cambiar captura de notas">
         <span id="gradesAiEmpty" class="grades-ai-drop-content"><span class="grades-ai-upload-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V3m-5 5 5-5 5 5M4 16v4h16v-4"/></svg></span><strong>Subir captura</strong></span>
         <span id="gradesAiPreview" class="grades-ai-preview" hidden><img id="gradesAiThumb" alt="Vista previa de la captura de notas"><span id="gradesAiName"></span></span>
       </button>
       <div class="grades-ai-notice"><span aria-hidden="true">↻</span><p>Las evaluaciones del semestre se reemplazarán por las de esta captura. Puedes deshacer el cambio.</p></div>
       <p class="grades-ai-status" id="gradesAiStatus" role="status" aria-live="polite"></p><div id="gradesAiResults" class="grades-ai-results"></div>
-      <div class="grades-ai-footer"><button type="button" class="ghost" id="gradesAiConfig">Configurar IA</button><button type="button" class="ghost" id="gradesAiUndo" hidden>Deshacer actualización</button><button type="button" class="p" id="gradesAiSubmit" disabled>Reemplazar notas</button></div>
+      <div class="grades-ai-footer"><button type="button" class="personal-only" id="grApply" hidden>Aplicar notas revisadas</button><button type="button" class="ghost api-only" id="gradesAiConfig">Configurar IA</button><button type="button" class="ghost" id="gradesAiUndo" hidden>Deshacer actualización</button><button type="button" class="p api-only" id="gradesAiSubmit" disabled>Reemplazar notas</button></div>
+    </div>
+  </div>
+  <div class="dlg" id="curriculumDlg" hidden>
+    <div class="dbox grades-ai-box" role="dialog" aria-modal="true" aria-labelledby="curriculumTitle">
+      <header class="grades-ai-header">
+        <h2 id="curriculumTitle">Importar malla curricular</h2>
+        <button type="button" class="icon" id="curriculumClose" aria-label="Cerrar importación">×</button>
+      </header>
+      <fieldset class="ai-method" id="cuMethod">
+        <legend>Método de importación</legend>
+        <label><input type="radio" name="cuMode" value="personal" checked>Sin API</label>
+        <label><input type="radio" name="cuMode" value="api">Con API</label>
+      </fieldset>
+      <div class="personal-ai">
+        <ol class="personal-ai-steps" aria-label="Pasos para importar sin API">
+          <li>
+            <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 4H6a2 2 0 0 0-2 2v10"/></svg>
+            <span>Pulsa «Copiar prompt».</span>
+          </li>
+          <li>
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16v12H9l-5 4V5Z"/><circle cx="9" cy="9" r="1"/><path d="m6 15 4-3 3 2 3-4 2 3"/></svg>
+            <span>En tu IA (Gemini, ChatGPT, Claude, etc.), pega el prompt y adjunta el archivo o las capturas de la malla curricular.</span>
+          </li>
+          <li>
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 6-5 6 5 6m8-12 5 6-5 6M14 5l-4 14"/></svg>
+            <span>Copia la respuesta de tu IA, pégala aquí y pulsa «Revisar malla».</span>
+          </li>
+        </ol>
+        <button type="button" id="cuCopy" class="copy-prompt"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 4H6a2 2 0 0 0-2 2v10"/></svg>Copiar prompt</button>
+        <textarea id="cuPrompt" aria-label="Prompt para copiar" readonly hidden></textarea>
+        <label>Respuesta de tu IA<textarea id="cuAnswer" rows="3" spellcheck="false" placeholder="Pega el JSON aquí"></textarea></label>
+        <button type="button" id="cuReviewAnswer">Revisar malla</button>
+        <span role="status" id="cuFeedback"></span>
+      </div>
+      <div class="api-only curriculum-api">
+        <label for="curriculumFiles">Capturas de la malla (PNG, JPG o WebP)</label>
+        <input type="file" id="curriculumFiles" accept="image/png,image/jpeg,image/webp" multiple>
+        <div class="curriculum-actions">
+          <button type="button" id="curriculumConfig">Configurar API</button>
+          <button type="button" class="p" id="curriculumRead">Leer malla</button>
+        </div>
+      </div>
+      <p class="grades-ai-status" id="curriculumStatus" role="status"></p>
+      <div id="curriculumReview" class="curriculum-review"></div>
+      <div class="curriculum-actions">
+        <button type="button" class="p" id="curriculumApply" hidden>Importar semestres</button>
+      </div>
     </div>
   </div>
   <input type="file" id="schfile" accept="image/*" hidden>
@@ -55,10 +158,35 @@
     <div class="dbox onboard-box" role="dialog" aria-modal="true" aria-labelledby="obTitle">
       <div id="obSetup">
         <div class="ob-head">
-          <h2 id="obTitle">¡Bienvenido a Cuentas Claras!</h2>
-          <p class="dp">Sube la foto de tu horario y conecta una API de IA para entrar a la página con todas tus materias ya creadas.</p>
+          <h2 id="obTitle">Importar horario</h2>
         </div>
-        <div class="onboard-grid">
+      <fieldset class="ai-method" id="obMethod">
+        <legend>Método de importación</legend>
+        <label><input type="radio" name="obMode" value="personal" checked>Sin API</label>
+        <label><input type="radio" name="obMode" value="api">Con API</label>
+      </fieldset>
+      <div class="personal-ai" id="obPersonal">
+        <ol class="personal-ai-steps" aria-label="Pasos para importar sin API">
+          <li>
+            <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 4H6a2 2 0 0 0-2 2v10"/></svg>
+            <span>Pulsa «Copiar prompt».</span>
+          </li>
+          <li>
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16v12H9l-5 4V5Z"/><circle cx="9" cy="9" r="1"/><path d="m6 15 4-3 3 2 3-4 2 3"/></svg>
+            <span>En tu IA (Gemini, ChatGPT, Claude, etc.), pega el prompt y adjunta la foto del horario.</span>
+          </li>
+          <li>
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 6-5 6 5 6m8-12 5 6-5 6M14 5l-4 14"/></svg>
+            <span>Copia la respuesta de tu IA, pégala aquí y pulsa «Revisar horario».</span>
+          </li>
+        </ol>
+        <button type="button" id="obCopy" class="copy-prompt"><svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 4H6a2 2 0 0 0-2 2v10"/></svg>Copiar prompt</button>
+        <textarea id="obPrompt" aria-label="Prompt para copiar" readonly hidden></textarea>
+        <label>Respuesta de tu IA<textarea id="obAnswer" rows="3" spellcheck="false" placeholder="Pega el JSON aquí"></textarea></label>
+        <button type="button" id="obReviewAnswer">Revisar horario</button>
+        <span role="status" id="obFeedback"></span>
+      </div>
+        <div class="onboard-grid api-only">
           <div class="onboard-col">
             <h3>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
@@ -79,68 +207,46 @@
               </div>
             </div>
           </div>
-          <div class="onboard-col">
-            <h3>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/><path d="M12 6v6l4 2"/></svg>
-              Conectar API de IA
-            </h3>
-            <p class="m">La IA leerá la imagen y extraerá tus materias automáticamente.</p>
-            <div class="dsform ob-dsform">
-              <label>Proveedor
-                <select id="obAiProvider">
-                  <option value="deepseek">DeepSeek</option>
-                  <option value="openai">OpenAI</option>
-                  <option value="openrouter">OpenRouter</option>
-                  <option value="anthropic">Anthropic (Claude)</option>
-                  <option value="google">Google Gemini</option>
-                  <option value="custom">Otra API compatible con OpenAI</option>
-                </select>
-              </label>
-              <label>Clave de API
-                <input type="password" id="obAiKey" autocomplete="new-password" spellcheck="false" placeholder="sk-...">
-              </label>
-              <label>Modelo
-                <input id="obAiModel" spellcheck="false" autocapitalize="off" placeholder="Modelo con visión" value="deepseek-flash">
-              </label>
-              <label>URL base
-                <input id="obAiBase" spellcheck="false" autocapitalize="off" placeholder="https://…/v1" value="https://api.deepseek.com">
-              </label>
-              <label class="dscheck">
-                <input type="checkbox" id="obAiRemember" checked> Guardar la conexión en este navegador
-              </label>
-              <div class="dslinks">
-                <span class="m">Consigue la clave en el panel de tu proveedor.</span>
-                <button type="button" class="ghost" id="obAiTest">Probar conexión</button>
-              </div>
-              <p class="m" id="obAiMsg"></p>
-            </div>
-          </div>
         </div>
-        <p class="m" id="obStatusMsg"></p>
+        <p id="obStatusMsg" class="api-only m" role="status"></p>
         <div class="onboard-actions">
-          <button type="button" class="ghost" id="obSkip">Agregar horario a mano</button>
-          <div class="onboard-actions-right">
-            <button type="button" class="p" id="obSubmit">Leer horario y crear materias</button>
+          <button type="button" class="p" id="obSkip">Agregar horario a mano</button>
+          <div class="onboard-actions-right api-only">
+            <button type="button" id="obAdjustAI">Ajustar IA</button>
+            <button type="button" class="p" id="obSubmit">Leer horario</button>
           </div>
         </div>
       </div>
       <div id="obReview" hidden>
         <div class="ob-head">
           <h2>Materias detectadas</h2>
-          <p class="dp" id="obReviewCount">Revisa las materias y los horarios detectados antes de entrar a la página.</p>
+          <p class="dp" id="obReviewCount">Revisa las materias y los horarios detectados antes de guardar.</p>
         </div>
         <div id="obReviewTable"></div>
         <div id="obReviewList" class="onboard-subs-list"></div>
         <p class="m" id="obReviewMsg"></p>
         <div class="onboard-actions">
-          <button type="button" class="ghost" id="obBack">Elegir otra foto</button>
+          <button type="button" class="ghost" id="obBack">Volver al importador</button>
           <div class="onboard-actions-right">
-            <button type="button" class="p" id="obConfirm">Confirmar y entrar a la página</button>
+            <button type="button" class="p" id="obConfirm">Guardar horario</button>
           </div>
         </div>
       </div>
     </div>
   </div>
+  <section class="about-app" aria-labelledby="aboutTitle">
+    <details>
+      <summary id="aboutTitle">Cómo funciona Cuentas Claras</summary>
+      <h2>Calculadora de notas y promedio académico</h2>
+      <p>Registra la nota y el porcentaje de cada evaluación para calcular el acumulado de una materia. Define tu nota objetivo y consulta cuánto necesitas en las evaluaciones pendientes para aprobar.</p>
+      <h2>Horarios de clases y faltas de asistencia</h2>
+      <p>Organiza las materias por semestre, consulta tu horario semanal y registra las faltas. Configura las fechas del semestre y el porcentaje máximo de inasistencias para seguir tu asistencia.</p>
+      <h2>¿Necesito una cuenta para empezar?</h2>
+      <p>Puedes agregar tus materias manualmente y guardar tus datos en este navegador sin registrarte. Descarga una copia JSON para restaurarla en otro dispositivo o conservar un respaldo.</p>
+      <h2>¿La importación con inteligencia artificial es obligatoria?</h2>
+      <p>Es opcional. Para leer capturas de horarios o notas puedes copiar un prompt para tu IA personal o conectar una API compatible. Su uso puede generar cargos del proveedor.</p>
+    </details>
+  </section>
 </main>
 <script defer src="./assets/qrcode.js"></script>
 <script defer src="./assets/lz-string.min.js"></script>

@@ -1,4 +1,5 @@
 import { esc } from '../core/utils.js';
+import { subjectSnapshot } from '../domain/subjects.js';
 import { loadAIConfig, isAIConfigured, providerDefaults } from '../services/ai.js';
 import { makeQrId, splitQrPayload, formatQrPart, parseQrPart, joinQrParts, QR_CHUNK_SIZE } from '../services/qr.js';
 
@@ -6,7 +7,7 @@ import { makeQrId, splitQrPayload, formatQrPart, parseQrPart, joinQrParts, QR_CH
  * El QR contiene una copia completa (incluida la configuración de IA) y se
  * parte en varios códigos cuando no cabe en uno solo.
  */
-export function createQrTransfer({ state, ui, restoreSnapshot }) {
+export function createQrTransfer({ state, ui, openPanel, restoreSnapshot }) {
   const $ = id => document.getElementById(id);
   let exportParts = [];
   let exportIndex = 0;
@@ -71,13 +72,7 @@ export function createQrTransfer({ state, ui, restoreSnapshot }) {
       app: 'cuentas-claras',
       version: 2,
       exportedAt: new Date().toISOString(),
-      subjects: state.subjects,
-      absences: state.absences,
-      sem: state.sem,
-      gradeScale: state.gradeScale,
-      absencePct: state.absencePct,
-      semesters: state.semesters,
-      activeSemesterId: state.activeSemesterId,
+      ...subjectSnapshot(state),
       ai: isAIConfigured(ai) ? ai : null,
     };
   }
@@ -121,17 +116,12 @@ export function createQrTransfer({ state, ui, restoreSnapshot }) {
         return formatQrPart(id, index + 1, chunks.length, chunk);
       });
       exportIndex = 0;
-      ui.dialogMode = 'exportqr';
-      $('dt').textContent = 'Exportar por QR';
-      $('dp').textContent = 'Escanea los códigos desde el otro dispositivo. La copia incluye materias, faltas, semestre y conexión de IA.';
-      $('dta').hidden = true;
-      $('dtab').hidden = false;
-      $('dgo').hidden = true;
-      $('dqrexport').hidden = true;
-      $('dqrimport').hidden = true;
-      $('dmsg').textContent = '';
-      $('dlg').hidden = false;
+      openPanel('exportqr', {
+        title:'Exportar por QR',
+        description:'Escanea los códigos desde el otro dispositivo. La copia incluye materias, faltas, semestre y conexión de IA.'
+      });
       drawExportQr();
+      $('dtab').hidden = false;
     } catch (error) {
       setMsg('dmsg', (error && error.message) || 'No pude crear el QR.', 'warn');
     }
@@ -336,26 +326,20 @@ export function createQrTransfer({ state, ui, restoreSnapshot }) {
 
   function showReview(data) {
     pendingSnapshot = data;
-    ui.dialogMode = 'qrreview';
-    $('dt').textContent = 'Restaurar desde QR';
-    $('dp').textContent = 'Se reemplazarán tus semestres, materias y faltas. Si el QR incluye IA, también se restaurará su configuración.';
-    $('dmsg').textContent = '';
-    $('dta').hidden = true;
-    $('dtab').hidden = false;
     const periods = Array.isArray(data.semesters) && data.semesters.length ? data.semesters : [data];
     const count = periods.reduce((total, period) => total + (Array.isArray(period?.subjects) ? period.subjects.length : 0), 0);
     const absences = periods.reduce((total, period) => total + (Array.isArray(period?.absences) ? period.absences.length : 0), 0);
     var hasAi = Boolean(data.ai && isAIConfigured(data.ai));
     var provider = data.ai && data.ai.provider ? providerDefaults(data.ai.provider).label : 'sin proveedor';
-    $('dtab').innerHTML = '<div class="qrreview">' +
+    const body = '<div class="qrreview">' +
       '<p><b>' + count + '</b> materia' + (count === 1 ? '' : 's') + ' y <b>' + absences + '</b> falta' + (absences === 1 ? '' : 's') + '.</p>' +
       '<p class="m">Conexión de IA incluida: ' + (hasAi ? 'sí (' + esc(provider) + ')' : 'no') + '.</p>' +
       '<p class="m qrwarn">Solo restaura códigos de una fuente confiable.</p></div>';
-    $('dgo').textContent = 'Restaurar todo';
-    $('dgo').hidden = false;
-    $('dqrexport').hidden = true;
-    $('dqrimport').hidden = true;
-    $('dlg').hidden = false;
+    openPanel('qrreview', {
+      title:'Restaurar desde QR',
+      description:'Se reemplazarán tus semestres, materias y faltas. Si el QR incluye IA, también se restaurará su configuración.',
+      body, confirm:'Restaurar todo'
+    });
   }
 
   function applyImportReview() {

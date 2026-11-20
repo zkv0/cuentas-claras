@@ -1,0 +1,77 @@
+/* Las muestras reutilizan las mismas paletas que la página. */
+:root[data-theme="rose"],[data-theme-preview="rose"]{
+  color-scheme:light;
+  --bg:#fceaf2;--surface:#fff6fa;--surface2:#fff0f7;--surface3:#f6d6e6;
+  --ink:#452539;--muted:#6b485e;--accent:#a12d65;--accent-ink:#fff;
+  --line:#dfafc6;--outline:#9b657f;--focus:#efbdd6;
+  --ok:#e1f3e8;--ok-ink:#245e40;--bad:#ffe2e8;--bad-ink:#902f49;
+}
+:root[data-theme="red"],[data-theme-preview="red"]{
+  color-scheme:dark;
+  --bg:#050505;--surface:#101011;--surface2:#171718;--surface3:#222224;
+  --ink:#fff0f1;--muted:#c4b2b5;--accent:#ff475e;--accent-ink:#210408;
+  --line:#38292d;--outline:#9c555f;--focus:#41242b;
+  --ok:#15251b;--ok-ink:#a4dcb3;--bad:#3b141d;--bad-ink:#ffacb6;
+}
+:root[data-theme="white"],[data-theme-preview="white"]{
+  color-scheme:light;
+  --bg:#f7f8fa;--surface:#fff;--surface2:#fff;--surface3:#e9edf2;
+  --ink:#20252d;--muted:#535d6b;--accent:#303a49;--accent-ink:#fff;
+  --line:#d1d8e1;--outline:#6b788a;--focus:#dce4ed;
+  --ok:#e2f1e7;--ok-ink:#265d40;--bad:#fbe6e8;--bad-ink:#902d41;
+}
+:root[data-theme="blue"],[data-theme-preview="blue"]{
+  color-scheme:light;
+  --bg:#c5e2ff;--surface:#e3f1ff;--surface2:#d6eaff;--surface3:#afd4fc;
+  --ink:#102d53;--muted:#2b496e;--accent:#164bb0;--accent-ink:#fff;
+  --line:#8ab6e8;--outline:#4d75a4;--focus:#94c1f6;
+  --ok:#e0f3ea;--ok-ink:#256048;--bad:#ffe7eb;--bad-ink:#91344b;
+}
+:root[data-theme="eclipse"],[data-theme-preview="eclipse"]{
+  color-scheme:dark;
+  --bg:#000;--surface:#080809;--surface2:#0e0e11;--surface3:#16161c;
+  --ink:#f3f2ff;--muted:#a6a4b7;--accent:#c4bbff;--accent-ink:#151126;
+  --line:#24232c;--outline:#706b92;--focus:#2a2739;
+  --ok:#0d2018;--ok-ink:#9cd8b3;--bad:#2b1020;--bad-ink:#f3b1ca;
+}
+:root[data-theme="jade"],[data-theme-preview="jade"]{
+  color-scheme:dark;
+  --bg:#071a14;--surface:#102b22;--surface2:#15382b;--surface3:#214939;
+  --ink:#e4f7ed;--muted:#b1d2c1;--accent:#85e3b4;--accent-ink:#09251a;
+  --line:#32634f;--outline:#6fa98e;--focus:#2b5e4b;
+  --ok:#193d2a;--ok-ink:#a6e5b4;--bad:#402329;--bad-ink:#ffc2c7;
+}
+:root[data-theme="amber"],[data-theme-preview="amber"]{
+  color-scheme:light;
+  --bg:#f6deae;--surface:#fff2d7;--surface2:#fff0d1;--surface3:#f3d4a0;
+  --ink:#482714;--muted:#70462b;--accent:#9f411e;--accent-ink:#fff5e7;
+  --line:#d9ad76;--outline:#94633d;--focus:#ecbc81;
+  --ok:#e7eed2;--ok-ink:#38592d;--bad:#f9d8cc;--bad-ink:#902f2b;
+}
+
+:root[data-theme]:not([data-theme="default"]){
+  --done:var(--surface2);--done-ink:var(--ink);
+  --need:var(--surface3);--need-ink:var(--ink);--need-line:var(--outline);
+  --control:var(--surface3);--strong-surface:var(--focus);
+  --panel:var(--surface2);--select:var(--surface3);--select-hover:var(--focus);
+  --selected-ink:var(--ink);--input-inset:var(--surface);--brand-ink:var(--ink);
+  --accent-focus:var(--accent);
+  --tint:color-mix(in srgb,var(--ink) 5%,transparent);
+}
+
+:root[data-theme]:not([data-theme="default"]) :is(.attendance-entry,.attendance-dialog){
+  --att-surface:var(--surface2);--att-container:var(--surface3);--att-container-high:var(--focus);
+  --att-on-surface:var(--ink);--att-on-variant:var(--muted);--att-outline:var(--outline);
+  --att-primary:var(--accent);--att-on-primary:var(--accent-ink);
+}
+
+.theme-preview{display:flex;align-items:center;gap:3px;flex:none;padding:4px;border-radius:8px;background:var(--surface2);box-shadow:0 0 0 1px var(--line)}
+.theme-preview[data-theme-preview="default"]{--bg:#000;--surface2:#1b1b1b;--surface3:#333;--accent:#e6e6e6;--line:#555}
+.theme-preview i{display:block;width:12px;height:12px;border-radius:50%;background:var(--bg)}
+.theme-preview i:nth-child(2){background:var(--surface3)}
+.theme-preview i:nth-child(3){background:var(--accent)}
+button.theme-option>span:nth-child(2){flex:1}
+button.theme-option>.theme-preview{flex:none}
+button.theme-option>.theme-check{visibility:hidden;color:var(--ink);font-size:1rem}
+.theme-option[aria-pressed="true"]{background:var(--surface3)}
+.theme-option[aria-pressed="true"] .theme-check{visibility:visible}

@@ -1,81 +1,23 @@
+import { connectPersonalAI } from '../ui/personal-ai.js';
 import { createScheduleReview } from '../ui/schedule-review.js';
-import { uid, esc, tm } from '../core/utils.js';
-import { DIAS } from '../core/constants.js';
-import { providerDefaults, loadAIConfig, saveAIConfig, testAIConnection, isAIConfigured, buildSchedulePrompt, readScheduleImage } from '../services/ai.js';
+import { parseSchedule } from '../domain/schedule-import.js';
+import { createScheduledSubject } from '../domain/subjects.js';
+import { loadAIConfig, isAIConfigured, buildSchedulePrompt, readScheduleImage } from '../services/ai.js';
 
 /** Importa materias desde una foto del horario y permite configurar la API de IA.
  */
-export function createOnboarding({ state, ui, save, render, schedTable, openAddSched }) {
+export function createOnboarding({ state, ui, save, render, schedTable, openAddSched, reviewExisting, adjustAI }) {
   const $ = id => document.getElementById(id);
   let selectedFile = null;
   let pendingSubjects = null;
   let reviewEditor = null;
-
-  function parseSubjects(res) {
-    const items = [];
-    const materias = (res && Array.isArray(res.materias)) ? res.materias : [];
-    materias.forEach(function (m) {
-      if (!m || !m.nombre) return;
-      const bl = [];
-      (Array.isArray(m.bloques) ? m.bloques : []).forEach(function (b) {
-        const d = Number(b && b.dia);
-        if (b && d >= 0 && d <= 6) bl.push({ d: d, s: tm(b.inicio), e: tm(b.fin) });
-      });
-      const days = bl.map(function (b) { return b.d; })
-        .concat(Array.isArray(m.dias) ? m.dias.map(Number) : [])
-        .filter(function (d, i, a) { return d >= 0 && d <= 6 && a.indexOf(d) === i; });
-      const seen = {};
-      const uniqueBl = bl.filter(function (b) {
-        const k = b.d + '_' + b.s + '_' + b.e;
-        if (seen[k]) return false;
-        seen[k] = 1;
-        return true;
-      });
-      items.push({ name: String(m.nombre).trim(), days: days, blocks: uniqueBl });
-    });
-    return items;
-  }
+  let readId = 0;
 
   function setStatusMsg(text, type) {
     const el = $('obStatusMsg');
     if (!el) return;
     el.textContent = text || '';
-    el.className = 'm' + (type ? ' ' + type : '');
-  }
-
-  function setAiMsg(text, type) {
-    const el = $('obAiMsg');
-    if (!el) return;
-    el.textContent = text || '';
-    el.className = 'm' + (type ? ' ' + type : '');
-  }
-
-  function getAIFormConfig() {
-    const provider = $('obAiProvider');
-    const key = $('obAiKey');
-    const model = $('obAiModel');
-    const base = $('obAiBase');
-    const remember = $('obAiRemember');
-    return {
-      provider: provider ? provider.value : 'deepseek',
-      apiKey: key ? key.value.trim() : '',
-      model: model ? model.value.trim() : '',
-      baseUrl: base ? base.value.trim() : '',
-      remember: remember ? !!remember.checked : true,
-    };
-  }
-
-  function applyProvider(id) {
-    const defaults = providerDefaults(id);
-    const base = $('obAiBase');
-    const model = $('obAiModel');
-    if (id === 'custom') {
-      if (base) base.value = '';
-      if (model) model.value = '';
-      return;
-    }
-    if (base && defaults.baseUrl) base.value = defaults.baseUrl;
-    if (model && defaults.model) model.value = defaults.model;
+    el.className = 'api-only m' + (type ? ' ' + type : '');
   }
 
   function resetFileSelection() {
@@ -125,25 +67,6 @@ export function createOnboarding({ state, ui, save, render, schedTable, openAddS
     resetFileSelection();
     setStatusMsg('');
 
-    const cfg = loadAIConfig();
-    const providerEl = $('obAiProvider');
-    const keyEl = $('obAiKey');
-    const modelEl = $('obAiModel');
-    const baseEl = $('obAiBase');
-    const rememberEl = $('obAiRemember');
-    if (providerEl) providerEl.value = cfg.provider || 'deepseek';
-    if (keyEl) keyEl.value = cfg.apiKey || '';
-    const defaults = providerDefaults(cfg.provider);
-    if (modelEl) modelEl.value = cfg.model || defaults.model || '';
-    if (baseEl) baseEl.value = cfg.baseUrl || defaults.baseUrl || '';
-    if (rememberEl) rememberEl.checked = cfg.remember !== false;
-
-    if (isAIConfigured(cfg)) {
-      setAiMsg('Conexión configurada. Lista para procesar.', 'ok');
-    } else {
-      setAiMsg('Configura el proveedor y la clave para procesar el horario.', '');
-    }
-
     const setup = $('obSetup');
     const review = $('obReview');
     if (setup) setup.hidden = false;
@@ -153,6 +76,9 @@ export function createOnboarding({ state, ui, save, render, schedTable, openAddS
   }
 
   function closeOnboarding() {
+    readId++;
+    $('obSubmit').disabled = false;
+    $('obAdjustAI').disabled = false;
     const dlg = $('onboardDlg');
     if (dlg) dlg.hidden = true;
   }
@@ -201,58 +127,28 @@ export function createOnboarding({ state, ui, save, render, schedTable, openAddS
     });
   }
 
-  const providerEl = $('obAiProvider');
-  if (providerEl) {
-    providerEl.addEventListener('change', function () {
-      applyProvider(providerEl.value);
+  const adjustButton = $('obAdjustAI');
+  adjustButton.addEventListener('click', () => {
+    closeOnboarding();
+    adjustAI(() => {
+      $('onboardDlg').hidden = false;
+      setStatusMsg(isAIConfigured() ? 'API configurada.' : '');
+      adjustButton.focus();
     });
-  }
-
-  const aiTestBtn = $('obAiTest');
-  if (aiTestBtn) {
-    aiTestBtn.addEventListener('click', function () {
-      const cfg = getAIFormConfig();
-      if (!isAIConfigured(cfg)) {
-        setAiMsg('Completa la clave, el modelo y la URL base para probar la conexión.', 'warn');
-        return;
-      }
-      setAiMsg('Comprobando conexión…');
-      testAIConnection(cfg).then(function (models) {
-        setAiMsg(models.length
-          ? 'Conexión correcta. Modelos disponibles: ' + models.slice(0, 4).join(', ') + '.'
-          : 'No se pudo listar modelos. Guarda la configuración y prueba a leer una foto.',
-          models.length ? 'ok' : 'warn');
-      }).catch(function (err) {
-        setAiMsg((err && err.message) || 'No pude conectar con la API de IA.', 'warn');
-      });
-    });
-  }
+  });
 
   const submitBtn = $('obSubmit');
-  if (submitBtn) {
-    submitBtn.addEventListener('click', async function () {
-      if (!selectedFile) {
-        setStatusMsg('Por favor selecciona o arrastra la foto de tu horario.', 'warn');
-        return;
-      }
-      const cfg = getAIFormConfig();
-      if (!isAIConfigured(cfg)) {
-        const info = providerDefaults(cfg.provider);
-        setStatusMsg(info.keyRequired && !cfg.apiKey
-          ? 'Por favor ingresa tu clave de API a la derecha.'
-          : 'Completa el proveedor, el modelo y la URL base.', 'warn');
-        const keyEl = $('obAiKey');
-        if (keyEl) keyEl.focus();
-        return;
-      }
-      saveAIConfig(cfg);
-
-      submitBtn.disabled = true;
-      setStatusMsg('Leyendo tu horario con IA… Esto puede tardar unos segundos.', 'loading');
-
-      try {
-        const res = await readScheduleImage(selectedFile, cfg, buildSchedulePrompt([]));
-        const items = parseSubjects(res);
+  connectPersonalAI('ob', () => buildSchedulePrompt(state.subjects.map(subject => subject.name)), data => {
+    if (submitBtn.disabled) return;
+    if (!data.materias.every(item => Array.isArray(item?.bloques) || Array.isArray(item?.dias)))
+      throw new Error('La respuesta debe contener los bloques del horario de cada materia.');
+    if (state.subjects.length && reviewExisting) {
+      closeOnboarding();
+      reviewExisting(data);
+    } else reviewSchedule(data);
+  });
+  function reviewSchedule(res) {
+        const items = parseSchedule(res);
         if (!items.length) {
           submitBtn.disabled = false;
           setStatusMsg('La IA respondió pero no detectó materias en la imagen. Prueba con una foto más nítida.', 'warn');
@@ -285,9 +181,39 @@ export function createOnboarding({ state, ui, save, render, schedTable, openAddS
           $('obReviewMsg').textContent = '';
           if (schedTable) $('obReviewTable').innerHTML = schedTable(items);
         });
+  }
+  if (submitBtn) {
+    submitBtn.addEventListener('click', async function () {
+      if (!selectedFile) {
+        setStatusMsg('Por favor selecciona o arrastra la foto de tu horario.', 'warn');
+        return;
+      }
+      const cfg = loadAIConfig();
+      if (!isAIConfigured(cfg)) {
+        setStatusMsg('Conecta tu API en Ajustar IA para leer la foto.', 'warn');
+        adjustButton.focus();
+        return;
+      }
+
+      const request = ++readId;
+      adjustButton.disabled = true;
+      submitBtn.disabled = true;
+      setStatusMsg('Leyendo tu horario con IA… Esto puede tardar unos segundos.', 'loading');
+
+      try {
+        const res = await readScheduleImage(selectedFile, cfg, buildSchedulePrompt(state.subjects.map(subject => subject.name)));
+        if (request !== readId) return;
+        if (state.subjects.length && reviewExisting && parseSchedule(res).length) {
+          submitBtn.disabled = false;
+          closeOnboarding();
+          reviewExisting(res);
+        } else reviewSchedule(res);
       } catch (err) {
+        if (request !== readId) return;
         submitBtn.disabled = false;
         setStatusMsg((err && err.message) || 'Ocurrió un error al leer el horario.', 'warn');
+      } finally {
+        if (request === readId) adjustButton.disabled = false;
       }
     });
   }
@@ -299,21 +225,7 @@ export function createOnboarding({ state, ui, save, render, schedTable, openAddS
       const error=reviewEditor.validate();
       if(error){$('obReviewMsg').textContent=error;return;}
       if (pendingSubjects && pendingSubjects.length) {
-        pendingSubjects.forEach(function (it) {
-          state.subjects.push({
-            id: uid(),
-            name: it.name,
-            min: 3,
-            max: 5,
-            days: it.days,
-            blocks: it.blocks,
-            rows: [
-              { p: '', g: '', pred: '' },
-              { p: '', g: '', pred: '' },
-              { p: '', g: '', pred: '' },
-            ],
-          });
-        });
+        pendingSubjects.forEach(subject => state.subjects.push(createScheduledSubject(subject)));
         save();
       }
       closeOnboarding();
@@ -348,11 +260,11 @@ export function createOnboarding({ state, ui, save, render, schedTable, openAddS
   }
 
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') {
+    if (e.key === 'Escape' && !e.defaultPrevented) {
       const onboardDlg = $('onboardDlg');
       if (onboardDlg && !onboardDlg.hidden) closeOnboarding();
     }
   });
 
-  return { openOnboarding, closeOnboarding, parseSubjects };
+  return { openOnboarding };
 }

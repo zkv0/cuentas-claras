@@ -97,3 +97,32 @@ test('una copia completa restaura todos los semestres con sus referencias', asyn
   assert.notEqual(first.subjects[0].id,'calculo');
   assert.equal(restored.subjects[0].id,restored.semesters.find(x=>x.id===restored.activeSemesterId).subjects[0].id);
 });
+
+test('importa la malla sin duplicar semestres ni cambiar una materia con notas', async () => {
+  const {importCurriculum, save} = await import('../src/core/store.js');
+  const {parseCurriculum} = await import('../src/domain/curriculum.js');
+  const previous = structuredClone(state);
+  try {
+    const existing = {id:'curriculum-existing',name:'Seméstre 1',subjects:[{id:'existing-subject',name:'Cálculo',rows:[{p:'100',g:'4'}],credits:'3'}],absences:[],sem:{start:'',end:'',pct:''}};
+    state.semesters = [existing];
+    state.activeSemesterId = existing.id;
+    state.subjects = existing.subjects;
+    state.absences = existing.absences;
+    state.sem = existing.sem;
+    const periods = parseCurriculum({semestres:[
+      {nombre:' semestre   1 ',materias:[{nombre:'Calculo',creditos:5},{nombre:'Física',creditos:4}]},
+      {nombre:'Semestre 2',materias:[{nombre:'Álgebra',creditos:null}]}
+    ]});
+    assert.deepEqual(importCurriculum(periods, new Set()), {created:1, added:1});
+    assert.equal(existing.subjects.length,1);
+    assert.deepEqual(importCurriculum(periods, new Set([existing.id])), {created:0, added:1});
+    assert.equal(existing.subjects[0].rows[0].g,'4');
+    assert.equal(existing.subjects[0].credits,'3');
+    assert.equal(existing.subjects[1].credits,'4');
+    assert.equal(state.activeSemesterId,existing.id);
+    assert.equal(JSON.parse(memory.get('calc-notas-v2')).semesters.length,2);
+  } finally {
+    Object.assign(state,previous);
+    save();
+  }
+});
