@@ -1,8 +1,9 @@
 import { toMin, fm } from '../core/utils.js';
-export function exportScheduleImage(state,onError){
-  const semester=state.semesters.find(x=>x.id===state.activeSemesterId);
-  const subjects=state.subjects.filter(x=>!x.archived&&x.days?.length);
-  if(!subjects.length){onError('Agrega un horario para exportarlo.');return}
+export function exportScheduleImage(state, onError, semesterId = state.activeSemesterId){
+  const semester = state.semesters.find(period => period.id === semesterId);
+  const source = semesterId === state.activeSemesterId ? state.subjects : semester?.subjects;
+  const subjects = (source ?? []).filter(subject => !subject.archived && subject.days?.length);
+  if(!subjects.length){onError(semester ? 'Este semestre no tiene un horario para descargar.' : 'Agrega un horario para exportarlo.');return}
   const order=[1,2,3,4,5,6,0],days=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
   const blocks=[],loose=[];
   subjects.forEach(subject=>{

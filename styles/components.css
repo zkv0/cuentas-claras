@@ -42,6 +42,7 @@ input:focus,input:focus-visible{outline:0;border-color:var(--accent);box-shadow:
 .dbox h2{font-size:1.5rem;font-weight:400}
 .dbox textarea{border-radius:12px;border-color:var(--outline)}
 .dact{justify-content:flex-end}
+#dqrexport[hidden] ~ #backupDownload,#dqrimport[hidden] ~ #backupOpen{display:none}
 .dact .p.danger{background:var(--bad);color:var(--bad-ink);border:0}
 .dlg:not([hidden]){animation:scrim .2s linear}
 .dlg:not([hidden]) .dbox{animation:dlgin .3s var(--ease)}
@@ -286,6 +287,10 @@ input:focus,input:focus-visible{outline:0;border-color:var(--accent);box-shadow:
 .settings-data{margin-top:24px;padding-top:20px;border-top:0}
 .settings-data h3{margin:0 0 12px;font-size:.95rem;font-weight:500}
 .settings-data-actions{display:flex;gap:8px;flex-wrap:wrap}
+.settings-schedule-picker{display:grid;gap:6px;margin:0 0 8px;font-size:.8rem;color:var(--muted)}
+.settings-schedule-picker select{min-height:46px;padding:10px 14px;border-radius:16px;background:var(--surface3);font-size:1rem;transition:background-color .2s var(--ease)}
+.settings-schedule-picker select:hover{background:#303030}
+.settings-schedule-picker select:focus-visible{outline:2px solid var(--muted);outline-offset:2px}
 
 .settings-options{display:flex;flex-direction:column}
 button.settings-option{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;min-height:52px;padding:14px 4px;background:transparent;border:0;border-bottom:0;border-radius:12px;box-shadow:none;color:var(--ink);text-align:left;font-weight:400}
@@ -317,13 +322,13 @@ button.settings-delete,button.settings-delete>span:last-child{color:var(--bad-in
 .semester-picker select:hover{border-color:#686868;background:#252525}
 .semester-picker select:focus-visible{outline:0;outline-offset:3px}
 @supports (appearance:base-select){
- .semester-picker select,.semester-picker select::picker(select){appearance:base-select}
- .semester-picker select::picker(select){background:#202020;color:var(--ink);border:0;border-radius:20px;padding:6px;margin-top:8px;box-shadow:0 12px 32px #0008;max-height:320px;overflow:auto}
- .semester-picker select option{padding:12px 14px;border-radius:14px;margin:2px 0;min-height:44px;cursor:pointer}
- .semester-picker select option:hover,.semester-picker select option:focus{background:#333}
- .semester-picker select option:checked{background:#303030;color:#fff;font-weight:500}
- .semester-picker select::picker-icon{color:var(--muted);transition:rotate .2s}
- .semester-picker select:open::picker-icon{rotate:180deg}
+ :is(.semester-picker,.settings-schedule-picker) select,:is(.semester-picker,.settings-schedule-picker) select::picker(select){appearance:base-select}
+ :is(.semester-picker,.settings-schedule-picker) select::picker(select){background:#202020;color:var(--ink);border:0;border-radius:20px;padding:6px;margin-top:8px;box-shadow:0 12px 32px #0008;max-height:320px;overflow:auto}
+ :is(.semester-picker,.settings-schedule-picker) select option{padding:12px 14px;border-radius:14px;margin:2px 0;min-height:44px;cursor:pointer}
+ :is(.semester-picker,.settings-schedule-picker) select option:hover,:is(.semester-picker,.settings-schedule-picker) select option:focus{background:#333}
+ :is(.semester-picker,.settings-schedule-picker) select option:checked{background:#303030;color:#fff;font-weight:500}
+ :is(.semester-picker,.settings-schedule-picker) select::picker-icon{color:var(--muted);transition:rotate .2s}
+ :is(.semester-picker,.settings-schedule-picker) select:open::picker-icon{rotate:180deg}
 }
 .dlg,.attendance-dialog{background:rgba(0,0,0,.48);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 .dbox,.attendance-box{background:rgba(28,28,28,.94);border:0;box-shadow:0 16px 64px rgba(0,0,0,.5)}

@@ -45,7 +45,7 @@ function clickAction(action) {
   for (const handler of listeners.get('click') ?? []) handler({ target: button });
 }
 
-test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK de Claude', () => {
+test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK de Claude', async () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(html, /<script defer src="\.\/assets\/app\.bundle\.js"><\/script>/);
   assert.match(html, /assets\/qrcode\.js/);
@@ -83,6 +83,8 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
   clickAction('gradeSettings');
   assert.equal(element('dt').textContent, 'Ajustes globales');
   assert.match(element('dtab').innerHTML, /data-act="export"/);
+  assert.match(element('dtab').innerHTML, /data-act="exportSettingsSchedule"/);
+  assert.doesNotMatch(element('dtab').innerHTML, /id="exportScheduleSemester"/);
   assert.match(element('dtab').innerHTML, /data-act="import"/);
   assert.match(element('dtab').innerHTML, /data-act="wipeAll"/);
   element('globalMin').value='6';element('globalMax').value='5';
@@ -232,6 +234,11 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
   assert.equal(JSON.parse(memory.get('calc-notas-v2')).sem.start,'2027-01-20');
   assert.equal(JSON.parse(memory.get('calc-notas-v2')).sem.end,'2027-06-15');
   clickAction('gradeSettings');
+  assert.match(element('dtab').innerHTML, /id="exportScheduleSemester"/);
+  assert.match(element('dtab').innerHTML, /<option[^>]+selected>2027-1<\/option>/);
+  element('exportScheduleSemester').value = JSON.parse(memory.get('calc-notas-v2')).activeSemesterId;
+  clickAction('exportSettingsSchedule');
+  assert.match(element('dmsg').textContent, /semestre no tiene un horario/);
   element('globalAbsencePct').value='20';
   element('dgo').handlers.click();
   assert.ok(JSON.parse(memory.get('calc-notas-v2')).semesters.every(x=>x.sem.pct===20));
@@ -271,6 +278,22 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
   clickAction('export');
   const backup = element('dta').value;
   assert.equal(Object.hasOwn(JSON.parse(backup), 'ai'), false);
+  let downloadedName, downloadedBlob;
+  const createObjectURL = URL.createObjectURL;
+  const appendChild = document.body.appendChild;
+  try {
+    URL.createObjectURL = blob => { downloadedBlob = blob; return createObjectURL(blob); };
+    document.body.appendChild = () => {};
+    document.createElement = () => ({ click() { downloadedName = this.download; }, remove() {} });
+    element('backupDownload').handlers.click();
+  } finally {
+    URL.createObjectURL = createObjectURL;
+    document.body.appendChild = appendChild;
+    delete document.createElement;
+  }
+  assert.match(downloadedName, /^nota-clara-\d{4}-\d{2}-\d{2}\.json$/);
+  assert.equal(downloadedBlob.type, 'application/json');
+  assert.equal(await downloadedBlob.text(), backup);
   importText('[{"name":"Materia temporal","rows":[]}]');
   assert.equal(JSON.parse(memory.get('calc-notas-v2')).subjects[0].name, 'Materia temporal');
   const beforeInvalid = memory.get('calc-notas-v2');
@@ -278,6 +301,19 @@ test('la distribución sin módulos arranca, crea, guarda y exporta sin el SDK d
   assert.match(element('dmsg').textContent, /No pude leer/);
   assert.equal(memory.get('calc-notas-v2'), beforeInvalid);
   importText(backup);
+  assertRestored();
+
+  importText('[{"name":"Materia temporal","rows":[]}]');
+  const beforeFile = memory.get('calc-notas-v2');
+  clickAction('import');
+  const selectFile = file => element('backupFile').handlers.change.call({ files: [file] });
+  await selectFile(new Blob(['{"subjects":[],"semesters":[null]}']));
+  assert.match(element('dmsg').textContent, /No pude leer el archivo/);
+  assert.equal(memory.get('calc-notas-v2'), beforeFile);
+  await selectFile(downloadedBlob);
+  assert.match(element('dmsg').textContent, /Copia lista/);
+  assert.equal(memory.get('calc-notas-v2'), beforeFile);
+  element('dgo').handlers.click();
   assertRestored();
 
   // Genera un QR real, convierte sus módulos a píxeles y restaura con el lector de imágenes.

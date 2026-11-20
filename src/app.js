@@ -72,6 +72,13 @@ const allowed = sub => allowedAbsences(sub, state.sem);
       render();return;
     }
     if(a==="exportScheduleImage"){exportScheduleImage(state,function(msg){ui.scheduleMessage=msg;var el=$("schmsg");if(el)el.textContent=msg});return}
+    if(a==="exportSettingsSchedule"){
+      const message = $('dmsg');
+      message.textContent = '';
+      const semesterId = state.semesters.length > 1 ? $('exportScheduleSemester').value : state.activeSemesterId;
+      exportScheduleImage(state, error => { message.textContent = error; }, semesterId);
+      return;
+    }
     if(a==="uploadSch"){requestSchedulePhoto();return}
     if(a==="addSched"){openAddSched();return}
     if(a==="aiConfig"){openAIConfig();return}
@@ -166,10 +173,13 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     if(card){card.scrollIntoView({block:'center'});var input=card.querySelector('.name');if(input)input.focus({preventScroll:true})}
   }
   function openGradeSettings(){
+    const schedulePicker = state.semesters.length > 1
+      ? `<label class="dsform settings-schedule-picker">Semestre del horario<select id="exportScheduleSemester">${$('semesterSelect').innerHTML}</select></label>`
+      : '';
     ui.dialogMode='gradeSettings';
     $('dt').textContent='Ajustes globales';$('dp').textContent='Se aplica a todos los semestres.';
     $('dta').hidden=true;$('dtab').hidden=false;
-    $('dtab').innerHTML='<div class="dsform compact-global-settings"><div class="grade-scale-row"><label>Nota mínima<input id="globalMin" inputmode="decimal" value="'+esc(state.gradeScale.min)+'"></label><label>Nota máxima<input id="globalMax" inputmode="decimal" value="'+esc(state.gradeScale.max)+'"></label></div><label>% máximo de faltas<input id="globalAbsencePct" inputmode="decimal" placeholder="Ej. 20" value="'+esc(state.absencePct)+'"></label></div><div class="settings-data"><h3>Datos</h3><div class="settings-options"><button type="button" class="settings-option" data-act="export"><span>Exportar datos</span><span aria-hidden="true">›</span></button><button type="button" class="settings-option" data-act="import"><span>Importar datos</span><span aria-hidden="true">›</span></button><button type="button" class="settings-option settings-delete" data-act="wipeAll"><span>Borrar datos</span><span aria-hidden="true">›</span></button></div></div>';
+    $('dtab').innerHTML='<div class="dsform compact-global-settings"><div class="grade-scale-row"><label>Nota mínima<input id="globalMin" inputmode="decimal" value="'+esc(state.gradeScale.min)+'"></label><label>Nota máxima<input id="globalMax" inputmode="decimal" value="'+esc(state.gradeScale.max)+'"></label></div><label>% máximo de faltas<input id="globalAbsencePct" inputmode="decimal" placeholder="Ej. 20" value="'+esc(state.absencePct)+'"></label></div><section class="settings-data" aria-labelledby="settingsScheduleTitle"><h3 id="settingsScheduleTitle">Horario</h3>'+schedulePicker+'<div class="settings-options"><button type="button" class="settings-option" data-act="exportSettingsSchedule"><span>Descargar imagen del horario</span><span aria-hidden="true">&#8595;</span></button></div></section><div class="settings-data"><h3>Datos</h3><div class="settings-options"><button type="button" class="settings-option" data-act="export"><span>Exportar datos</span><span aria-hidden="true">›</span></button><button type="button" class="settings-option" data-act="import"><span>Importar datos</span><span aria-hidden="true">›</span></button><button type="button" class="settings-option settings-delete" data-act="wipeAll"><span>Borrar datos</span><span aria-hidden="true">›</span></button></div></div>';
     $('dqrexport').hidden=true;$('dqrimport').hidden=true;$('dmsg').textContent='';
     $('dgo').hidden=false;$('dgo').className='p';$('dgo').textContent='Guardar';$('dlg').hidden=false;$('globalMin').focus();
   }
@@ -181,7 +191,10 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     state.absencePct=pct===null?'':pct;
     state.gradeScale={min:min,max:max};save();render();closeDlg();
   }
+  let backupReadId = 0;
+
   function openDlg(mode){
+    backupReadId++;
     ui.dialogMode=mode;$("dgo").hidden=false;$("dgo").className="p";var ta=$("dta");$("dmsg").textContent="";ta.hidden=false;$("dtab").hidden=true;
     $("dqrexport").hidden=mode!=="export";
     $("dqrimport").hidden=mode!=="import";
@@ -194,8 +207,47 @@ const allowed = sub => allowedAbsences(sub, state.sem);
       $("dp").textContent="Pega el texto exportado. Una copia completa reemplaza tus semestres, materias y faltas. Una lista antigua agrega materias al semestre activo.";
       ta.readOnly=false;ta.value="";ta.placeholder="Pega aquí tus datos";$("dgo").textContent="Importar";
     }
-    $("dlg").hidden=false;ta.focus();if(mode==="export")ta.select();
+    $("dlg").hidden=false;
+    $(mode === 'export' ? 'backupDownload' : 'backupOpen').focus();
   }
+  function isCompleteBackup(data) {
+    return Array.isArray(data?.subjects) && Array.isArray(data.semesters) && data.semesters.length > 0 &&
+      data.semesters.every(semester => Array.isArray(semester?.subjects) &&
+        semester.subjects.every(subject => Array.isArray(subject?.rows)));
+  }
+
+  $('backupDownload').addEventListener('click', function () {
+    if (ui.dialogMode !== 'export') return;
+    const blob = new Blob([$('dta').value], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'nota-clara-' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+  $('backupOpen').addEventListener('click', function () { $('backupFile').click(); });
+  $('backupFile').addEventListener('change', async function () {
+    const file = this.files?.[0];
+    this.value = '';
+    if (!file || ui.dialogMode !== 'import') return;
+    const readId = ++backupReadId;
+    const stillOpen = () => readId === backupReadId && ui.dialogMode === 'import' && !$('dlg').hidden;
+    const message = $('dmsg');
+    message.textContent = '';
+    try {
+      const text = (await file.text()).trim();
+      if (!stillOpen()) return;
+      if (!isCompleteBackup(JSON.parse(text))) throw new Error('Invalid backup');
+      $('dta').value = text;
+      message.textContent = 'Copia lista. Pulsa Importar para restaurarla.';
+    } catch {
+      if (stillOpen()) message.textContent = 'No pude leer el archivo. Elige una copia JSON completa de Nota Clara.';
+    }
+  });
+
   function openWipe(){
     ui.dialogMode="wipe";
     var n=state.semesters.reduce((n,x)=>n+x.subjects.length,0),a=state.semesters.reduce((n,x)=>n+x.absences.length,0);
@@ -217,7 +269,7 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     ui.archOpen=false;ui.reorderAll=false;ui.reorderId=null;ui.scheduleMessage="";open.faltas=false;
     save();render();closeDlg();ui.dialogMode="";resetQr();
   }
-  function closeDlg(){pendingSemesterDeletion=null;$("dx").textContent="Cerrar";$("dlg").hidden=true;$("dgo").hidden=false;$("dgo").className="p";$("dqrexport").hidden=true;$("dqrimport").hidden=true}
+  function closeDlg(){backupReadId++;pendingSemesterDeletion=null;$("dx").textContent="Cerrar";$("dlg").hidden=true;$("dgo").hidden=false;$("dgo").className="p";$("dqrexport").hidden=true;$("dqrimport").hidden=true}
   function restoreSnapshot(data){
     var ai=applySubjectSnapshot(state,data);
     if(!ai&&(!data||!Array.isArray(data.subjects)))return;
@@ -250,7 +302,10 @@ const allowed = sub => allowedAbsences(sub, state.sem);
     }
     try{
       var d=JSON.parse(ta.value.trim());
-      if(d&&Array.isArray(d.semesters)&&d.semesters.length){applySubjectSnapshot(state,d);save();refreshSemesters();render();closeDlg();return}
+      if(d&&Array.isArray(d.semesters)&&d.semesters.length){
+        if (!isCompleteBackup(d)) throw new Error('Invalid backup');
+        applySubjectSnapshot(state,d);save();refreshSemesters();render();closeDlg();return;
+      }
       var list=Array.isArray(d)?d:(d&&d.subjects);
       if(!Array.isArray(list)||!list.length)throw new Error("vacío");
       var src=list.filter(function(x){return x&&typeof x==="object"}),add=src.map(cleanSubject),idmap={};src.forEach(function(x,i){idmap[x.id]=add[i].id});

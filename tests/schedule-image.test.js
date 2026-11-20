@@ -14,6 +14,13 @@ test('exporta el horario activo a PNG con nombre, días y clases sin hora',()=>{
  assert.equal(canvas.width,1600);assert.ok(canvas.height>200);
  assert.ok(texts.includes('Cálculo'));assert.ok(texts.some(t=>t.includes('sin hora')));
  assert.ok(!texts.some(t=>t.includes('Archivada')));
+ state.semesters[1].subjects = [{name:'Bases de Datos',days:[2],blocks:[{d:2,s:'14:00',e:'16:00'}]}];
+ texts.length = 0;
+ exportScheduleImage(state,error=>assert.fail(error),'b');
+ assert.equal(downloads[1],'horario-2026-2.png');
+ assert.ok(texts.includes('Bases de Datos'));
+ assert.ok(!texts.includes('Cálculo'));
+ assert.equal(state.activeSemesterId,'a');
 });
 test('sin horario informa el problema y no descarga',()=>{
  let message;exportScheduleImage({semesters:[],subjects:[]},value=>message=value);
